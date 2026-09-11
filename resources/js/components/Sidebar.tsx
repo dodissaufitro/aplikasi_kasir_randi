@@ -6,6 +6,7 @@ import {
     Package, 
     Boxes,
     Users, 
+    BarChart3,
     ShieldCheck,
     LogOut
 } from 'lucide-react';
@@ -33,9 +34,9 @@ export default function Sidebar({ auth }: Props) {
     const isSuperAdmin = auth.user.role === 'superadmin';
     const effectiveMenus = auth.user.effective_menu_access || (
         auth.user.role === 'superadmin' 
-            ? ['dashboard', 'kasir', 'transaksi', 'barang', 'stok-masuk', 'pelanggan', 'pengguna']
+            ? ['dashboard', 'kasir', 'transaksi', 'barang', 'stok-masuk', 'pelanggan', 'laporan', 'pengguna']
             : auth.user.role === 'admin'
-            ? ['dashboard', 'kasir', 'transaksi', 'barang', 'stok-masuk', 'pelanggan']
+            ? ['dashboard', 'kasir', 'transaksi', 'barang', 'stok-masuk', 'pelanggan', 'laporan']
             : ['dashboard', 'kasir', 'transaksi']
     );
 
@@ -46,6 +47,7 @@ export default function Sidebar({ auth }: Props) {
         { key: 'barang', label: 'Data Barang', href: '/barang', icon: Package },
         { key: 'stok-masuk', label: 'Stok Masuk', href: '/stok-masuk', icon: Boxes },
         { key: 'pelanggan', label: 'Pelanggan & Hutang', href: '/pelanggan', icon: Users },
+        { key: 'laporan', label: 'Laporan', href: '/laporan', icon: BarChart3 },
         { key: 'pengguna', label: 'Kelola Pengguna', href: '/pengguna', icon: ShieldCheck },
     ];
 

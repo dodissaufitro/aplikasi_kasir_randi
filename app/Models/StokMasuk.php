@@ -17,6 +17,8 @@ class StokMasuk extends Model
         'id_barang',
         'tanggal_masuk',
         'jumlah',
+        'satuan',
+        'rasio_konversi',
     ];
 
     public function barang()

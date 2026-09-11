@@ -14,7 +14,11 @@ class PosController extends Controller
 {
     public function index()
     {
-        $barang = Barang::where('stok', '>', 0)->get();
+        $barang = Barang::with('satuanKonversi')
+            ->where('stok', '>', 0)
+            ->where('is_aktif', true)
+            ->get();
+
         $pelanggan = Pelanggan::all();
 
         return Inertia::render('Kasir/Index', [
@@ -29,6 +33,9 @@ class PosController extends Controller
             'items' => 'required|array|min:1',
             'items.*.id_barang' => 'required|exists:barang,id_barang',
             'items.*.jumlah' => 'required|integer|min:1',
+            'items.*.satuan' => 'nullable|string|max:50',
+            'items.*.rasio_konversi' => 'nullable|integer|min:1',
+            'items.*.harga_jual' => 'required|numeric|min:0',
             'jenis_pembayaran' => 'required|in:tunai,hutang',
             'id_pelanggan' => 'required_if:jenis_pembayaran,hutang|nullable|exists:pelanggan,id_pelanggan',
         ]);
@@ -48,6 +55,7 @@ class PosController extends Controller
                 'total_belanja' => $totalHarga,
                 'jenis_pembayaran' => $request->jenis_pembayaran,
                 'status_pembayaran' => $request->jenis_pembayaran === 'tunai' ? 'lunas' : 'belum_lunas',
+                'status_transaksi' => 'selesai',
             ]);
 
             // Jika hutang, tambahkan ke total_hutang pelanggan
@@ -61,21 +69,31 @@ class PosController extends Controller
 
             // Simpan Detail & Kurangi Stok
             foreach ($request->items as $item) {
+                $barang = Barang::findOrFail($item['id_barang']);
+                $rasio = isset($item['rasio_konversi']) && (int)$item['rasio_konversi'] > 0 
+                    ? (int)$item['rasio_konversi'] 
+                    : 1;
+
+                $satuan = !empty($item['satuan']) ? $item['satuan'] : ($barang->satuan ?: 'PCS');
+                $jumlahPotongStok = (int)$item['jumlah'] * $rasio;
+
+                if ($barang->stok < $jumlahPotongStok) {
+                    $satuanName = $barang->satuan ?: 'PCS';
+                    throw new \Exception("Stok {$barang->nama_barang} tidak mencukupi (dibutuhkan {$jumlahPotongStok} {$satuanName}, tersedia {$barang->stok} {$satuanName}).");
+                }
+
                 DetailTransaksi::create([
                     'id_transaksi' => $transaksi->id_transaksi,
-                    'id_barang' => $item['id_barang'],
+                    'id_barang' => $barang->id_barang,
                     'jumlah' => $item['jumlah'],
+                    'satuan' => $satuan,
+                    'rasio_konversi' => $rasio,
                     'harga_satuan' => $item['harga_jual'],
                     'subtotal' => $item['harga_jual'] * $item['jumlah']
                 ]);
 
-                // Kurangi stok
-                $barang = Barang::find($item['id_barang']);
-                if ($barang->stok < $item['jumlah']) {
-                    throw new \Exception("Stok {$barang->nama_barang} tidak mencukupi.");
-                }
-                
-                $barang->stok -= $item['jumlah'];
+                // Kurangi stok dasar
+                $barang->stok -= $jumlahPotongStok;
                 $barang->save();
             }
 
@@ -87,5 +105,25 @@ class PosController extends Controller
             DB::rollBack();
             return redirect()->back()->withErrors(['error' => $e->getMessage()]);
         }
+    }
+
+    public function quickPelanggan(Request $request)
+    {
+        $validated = $request->validate([
+            'nama_pelanggan' => 'required|string|max:255',
+            'no_telp' => 'nullable|string|max:20',
+        ]);
+
+        $pelanggan = Pelanggan::create([
+            'nama_pelanggan' => $validated['nama_pelanggan'],
+            'no_telp' => $validated['no_telp'] ?? null,
+            'total_hutang' => 0,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Pelanggan berhasil ditambahkan.',
+            'pelanggan' => $pelanggan,
+        ]);
     }
 }

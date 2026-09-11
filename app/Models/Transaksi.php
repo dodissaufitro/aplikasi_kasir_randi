@@ -18,7 +18,9 @@ class Transaksi extends Model
         'tanggal',
         'total_belanja',
         'jenis_pembayaran',
-        'status_pembayaran'
+        'status_pembayaran',
+        'status_transaksi',
+        'catatan_batal'
     ];
 
     public function detailTransaksi()

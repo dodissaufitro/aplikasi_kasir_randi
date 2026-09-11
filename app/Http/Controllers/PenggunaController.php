@@ -55,6 +55,13 @@ class PenggunaController extends Controller
                 'group' => 'Master Data',
             ],
             [
+                'key' => 'laporan',
+                'label' => 'Laporan Kasir',
+                'description' => 'Laporan penjualan, riwayat transaksi, pergerakan produk, dan ringkasan keuangan toko.',
+                'icon' => 'BarChart3',
+                'group' => 'Laporan & Analisis',
+            ],
+            [
                 'key' => 'pengguna',
                 'label' => 'Kelola Pengguna',
                 'description' => 'Manajemen staf login serta pengaturan role dan izin hak akses menu.',

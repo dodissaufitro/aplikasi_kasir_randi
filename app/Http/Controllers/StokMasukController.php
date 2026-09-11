@@ -16,7 +16,7 @@ class StokMasukController extends Controller
             ->orderBy('id_stok_masuk', 'desc')
             ->get();
 
-        $barang = Barang::orderBy('nama_barang', 'asc')->get();
+        $barang = Barang::with('satuanKonversi')->orderBy('nama_barang', 'asc')->get();
 
         return Inertia::render('StokMasuk/Index', [
             'stok_masuk' => $stokMasuk,
@@ -29,26 +29,42 @@ class StokMasukController extends Controller
         $validated = $request->validate([
             'id_barang' => 'required|exists:barang,id_barang',
             'jumlah' => 'required|integer|min:1',
+            'satuan' => 'nullable|string|max:50',
+            'rasio_konversi' => 'nullable|integer|min:1',
             'tanggal_masuk' => 'nullable|date',
         ]);
 
         try {
             DB::beginTransaction();
 
+            $barang = Barang::findOrFail($validated['id_barang']);
+            $rasio = isset($validated['rasio_konversi']) && (int)$validated['rasio_konversi'] > 0 
+                ? (int)$validated['rasio_konversi'] 
+                : 1;
+
+            $satuan = !empty($validated['satuan']) ? $validated['satuan'] : ($barang->satuan ?: 'PCS');
+            $jumlahTambahanStok = (int)$validated['jumlah'] * $rasio;
+
             $masuk = StokMasuk::create([
-                'id_barang' => $validated['id_barang'],
+                'id_barang' => $barang->id_barang,
                 'jumlah' => $validated['jumlah'],
+                'satuan' => $satuan,
+                'rasio_konversi' => $rasio,
                 'tanggal_masuk' => $validated['tanggal_masuk'] ?? now(),
             ]);
 
-            // Tambahkan ke stok barang
-            $barang = Barang::findOrFail($validated['id_barang']);
-            $barang->stok += $validated['jumlah'];
+            // Tambahkan ke stok dasar barang
+            $barang->stok += $jumlahTambahanStok;
             $barang->save();
 
             DB::commit();
 
-            return redirect()->back()->with('success', "Stok barang '{$barang->nama_barang}' berhasil ditambah sebanyak {$validated['jumlah']}.");
+            $satuanDasar = $barang->satuan ?: 'PCS';
+            $msgDetail = $rasio > 1 
+                ? "{$validated['jumlah']} {$satuan} (setara {$jumlahTambahanStok} {$satuanDasar})" 
+                : "{$validated['jumlah']} {$satuanDasar}";
+
+            return redirect()->back()->with('success', "Stok barang '{$barang->nama_barang}' berhasil ditambah sebanyak {$msgDetail}.");
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->withErrors(['error' => 'Gagal menambah stok: ' . $e->getMessage()]);
@@ -63,7 +79,9 @@ class StokMasukController extends Controller
             $stokMasuk = StokMasuk::findOrFail($id);
             $barang = Barang::find($stokMasuk->id_barang);
             if ($barang) {
-                $barang->stok = max(0, $barang->stok - $stokMasuk->jumlah);
+                $rasio = $stokMasuk->rasio_konversi ?: 1;
+                $jumlahKurang = $stokMasuk->jumlah * $rasio;
+                $barang->stok = max(0, $barang->stok - $jumlahKurang);
                 $barang->save();
             }
 
@@ -71,7 +89,7 @@ class StokMasukController extends Controller
 
             DB::commit();
 
-            return redirect()->back()->with('success', 'Riwayat stok masuk berhasil dibatalkan/dihapus.');
+            return redirect()->back()->with('success', 'Data stok masuk berhasil dihapus dan inventaris disesuaikan.');
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->withErrors(['error' => 'Gagal menghapus stok masuk: ' . $e->getMessage()]);

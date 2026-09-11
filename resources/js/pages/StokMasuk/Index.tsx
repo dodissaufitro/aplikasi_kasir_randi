@@ -12,10 +12,17 @@ import {
 import { useState, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
 
+interface SatuanKonversi {
+    nama_satuan: string;
+    rasio_konversi: number;
+}
+
 interface Barang {
     id_barang: number;
     nama_barang: string;
+    satuan?: string;
     stok: number;
+    satuan_konversi?: SatuanKonversi[];
 }
 
 interface StokMasukItem {
@@ -23,6 +30,8 @@ interface StokMasukItem {
     id_barang: number;
     tanggal_masuk: string;
     jumlah: number;
+    satuan?: string;
+    rasio_konversi?: number;
     barang?: Barang;
 }
 
@@ -49,6 +58,8 @@ export default function StokMasukIndex({ auth, stok_masuk, barang, flash }: Prop
     const { data, setData, post, processing, reset, errors } = useForm({
         id_barang: '',
         jumlah: 1,
+        satuan: '',
+        rasio_konversi: 1,
         tanggal_masuk: new Date().toISOString().slice(0, 16)
     });
 
@@ -177,12 +188,17 @@ export default function StokMasukIndex({ auth, stok_masuk, barang, flash }: Prop
                                                     {s.barang ? s.barang.nama_barang : `Barang #${s.id_barang}`}
                                                 </td>
                                                 <td className="py-4 px-6">
-                                                    <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[11px]">
-                                                        +{s.jumlah}
+                                                    <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold text-[11px]">
+                                                        +{s.jumlah} {s.satuan || s.barang?.satuan || 'PCS'}
                                                     </span>
+                                                    {s.rasio_konversi && s.rasio_konversi > 1 ? (
+                                                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                                                            (setara {s.jumlah * s.rasio_konversi} {s.barang?.satuan || 'PCS'})
+                                                        </span>
+                                                    ) : null}
                                                 </td>
                                                 <td className="py-4 px-6 font-medium text-slate-600 dark:text-slate-300">
-                                                    {s.barang ? `${s.barang.stok} unit` : '-'}
+                                                    {s.barang ? `${s.barang.stok} ${s.barang.satuan || 'PCS'}` : '-'}
                                                 </td>
                                                 <td className="py-4 px-6 text-slate-500">
                                                     {new Date(s.tanggal_masuk).toLocaleString('id-ID')}
@@ -231,31 +247,95 @@ export default function StokMasukIndex({ auth, stok_masuk, barang, flash }: Prop
                                 <select 
                                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-3 h-10 outline-none focus:ring-2 focus:ring-indigo-500"
                                     value={data.id_barang}
-                                    onChange={(e) => setData('id_barang', e.target.value)}
+                                    onChange={(e) => {
+                                        const bId = e.target.value;
+                                        setData('id_barang', bId);
+                                        const bObj = barang.find(b => b.id_barang.toString() === bId);
+                                        if (bObj) {
+                                            setData(prev => ({
+                                                ...prev,
+                                                id_barang: bId,
+                                                satuan: bObj.satuan || 'PCS',
+                                                rasio_konversi: 1,
+                                            }));
+                                        }
+                                    }}
                                     required
                                 >
                                     <option value="">-- Pilih Barang yang Ditambah --</option>
                                     {barang.map(b => (
                                         <option key={b.id_barang} value={b.id_barang}>
-                                            {b.nama_barang} (Stok Saat Ini: {b.stok})
+                                            {b.nama_barang} (Stok: {b.stok} {b.satuan || 'PCS'})
                                         </option>
                                     ))}
                                 </select>
                                 {errors.id_barang && <p className="text-[11px] text-rose-500 mt-1">{errors.id_barang}</p>}
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">Jumlah Tambahan</label>
-                                <input 
-                                    type="number"
-                                    min="1"
-                                    value={data.jumlah}
-                                    onChange={(e) => setData('jumlah', Number(e.target.value))}
-                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-3 h-10 outline-none focus:ring-2 focus:ring-indigo-500"
-                                    required
-                                />
-                                {errors.jumlah && <p className="text-[11px] text-rose-500 mt-1">{errors.jumlah}</p>}
-                            </div>
+                            {/* Pilihan Satuan Pasokan Masuk */}
+                            {(() => {
+                                const selectedBarangObj = barang.find(b => b.id_barang.toString() === data.id_barang);
+                                const baseSatuan = selectedBarangObj?.satuan || 'PCS';
+                                const konversiList = selectedBarangObj?.satuan_konversi || [];
+
+                                return (
+                                    <>
+                                        {konversiList.length > 0 && (
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                                    Satuan Pembelian / Pasokan
+                                                </label>
+                                                <select
+                                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-3 h-10 outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-600"
+                                                    value={data.satuan}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        if (val === baseSatuan) {
+                                                            setData(prev => ({ ...prev, satuan: baseSatuan, rasio_konversi: 1 }));
+                                                        } else {
+                                                            const match = konversiList.find(k => k.nama_satuan === val);
+                                                            setData(prev => ({ 
+                                                                ...prev, 
+                                                                satuan: val, 
+                                                                rasio_konversi: match ? match.rasio_konversi : 1 
+                                                            }));
+                                                        }
+                                                    }}
+                                                >
+                                                    <option value={baseSatuan}>{baseSatuan} (Satuan Dasar)</option>
+                                                    {konversiList.map(k => (
+                                                        <option key={k.nama_satuan} value={k.nama_satuan}>
+                                                            {k.nama_satuan} (Isi {k.rasio_konversi} {baseSatuan})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                                Jumlah Tambahan ({data.satuan || baseSatuan})
+                                            </label>
+                                            <input 
+                                                type="number"
+                                                min="1"
+                                                value={data.jumlah}
+                                                onChange={(e) => setData('jumlah', Number(e.target.value))}
+                                                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-3 h-10 outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                                required
+                                            />
+                                            {errors.jumlah && <p className="text-[11px] text-rose-500 mt-1">{errors.jumlah}</p>}
+
+                                            {/* Preview Penambahan Stok Riil */}
+                                            {selectedBarangObj && data.rasio_konversi > 1 && (
+                                                <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1.5 bg-emerald-50 dark:bg-emerald-950/30 p-2 rounded-lg">
+                                                    💡 Total stok bertambah di gudang: <strong>{data.jumlah * data.rasio_konversi} {baseSatuan}</strong> ({data.jumlah} {data.satuan} × {data.rasio_konversi} {baseSatuan}).
+                                                </p>
+                                            )}
+                                        </div>
+                                    </>
+                                );
+                            })()}
 
                             <div>
                                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">Waktu Masuk</label>

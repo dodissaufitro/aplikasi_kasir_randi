@@ -51,12 +51,13 @@ interface Props {
             effective_menu_access?: string[];
         }
     };
-    users: UserItem[];
-    availableMenus: AvailableMenu[];
-    flash: {
+    users?: UserItem[];
+    availableMenus?: AvailableMenu[];
+    flash?: {
         success?: string;
         error?: string;
     };
+    errors?: Record<string, string>;
 }
 
 const MENU_ICONS: Record<string, React.ElementType> = {
@@ -75,7 +76,13 @@ const DEFAULT_MENUS: Record<string, string[]> = {
     kasir: ['dashboard', 'kasir', 'transaksi'],
 };
 
-export default function PenggunaIndex({ auth, users, availableMenus = [], flash }: Props) {
+export default function PenggunaIndex({
+    auth,
+    users = [],
+    availableMenus = [],
+    flash = {},
+    errors: pageErrors = {},
+}: Props) {
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<UserItem | null>(null);
@@ -86,7 +93,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
     const [savingPermissions, setSavingPermissions] = useState(false);
     const [permissionError, setPermissionError] = useState<string | null>(null);
 
-    const { data, setData, post, put, processing, reset, errors } = useForm({
+    const { data, setData, post, put, processing, reset, errors: formErrors, clearErrors } = useForm({
         username: '',
         nama_lengkap: '',
         role: 'kasir' as 'superadmin' | 'admin' | 'kasir',
@@ -95,15 +102,28 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
     });
 
     const filteredUsers = useMemo(() => {
-        return users.filter(u => 
-            u.username.toLowerCase().includes(search.toLowerCase()) ||
-            u.nama_lengkap.toLowerCase().includes(search.toLowerCase()) ||
-            u.role.toLowerCase().includes(search.toLowerCase())
+        return (users || []).filter(u => 
+            (u.username || '').toLowerCase().includes(search.toLowerCase()) ||
+            (u.nama_lengkap || '').toLowerCase().includes(search.toLowerCase()) ||
+            (u.role || '').toLowerCase().includes(search.toLowerCase())
         );
     }, [users, search]);
 
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setEditingUser(null);
+        reset();
+        clearErrors();
+    };
+
+    const closePermissionModal = () => {
+        setPermissionModalUser(null);
+        setPermissionError(null);
+    };
+
     const openCreateModal = () => {
         setEditingUser(null);
+        clearErrors();
         reset();
         setData({
             username: '',
@@ -117,6 +137,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
 
     const openEditModal = (u: UserItem) => {
         setEditingUser(u);
+        clearErrors();
         const userMenus = u.effective_menu_access || DEFAULT_MENUS[u.role] || [];
         setData({
             username: u.username,
@@ -139,7 +160,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
         setData(prev => ({
             ...prev,
             role: newRole,
-            menu_access: [...DEFAULT_MENUS[newRole]],
+            menu_access: [...(DEFAULT_MENUS[newRole] || [])],
         }));
     };
 
@@ -148,15 +169,13 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
         if (editingUser) {
             put(route('pengguna.update', editingUser.id), {
                 onSuccess: () => {
-                    setIsModalOpen(false);
-                    reset();
+                    closeModal();
                 }
             });
         } else {
             post(route('pengguna.store'), {
                 onSuccess: () => {
-                    setIsModalOpen(false);
-                    reset();
+                    closeModal();
                 }
             });
         }
@@ -179,13 +198,15 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
             { menu_access: selectedPermissions },
             {
                 onSuccess: () => {
-                    setPermissionModalUser(null);
+                    closePermissionModal();
                     setSavingPermissions(false);
                 },
                 onError: (errs) => {
                     setSavingPermissions(false);
                     if (errs.menu_access) {
                         setPermissionError(errs.menu_access);
+                    } else if (errs.error) {
+                        setPermissionError(errs.error);
                     }
                 }
             }
@@ -247,9 +268,9 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                             <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" /> {flash.success}
                         </div>
                     )}
-                    {(flash?.error || errors.error) && (
+                    {(flash?.error || pageErrors?.error) && (
                         <div className="p-4 rounded-2xl bg-rose-50 text-rose-700 font-medium text-xs border border-rose-100 flex items-center gap-2 shadow-sm">
-                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" /> {flash?.error || errors.error}
+                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" /> {flash?.error || pageErrors?.error}
                         </div>
                     )}
 
@@ -358,7 +379,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                                             {/* Tombol Atur Hak Akses Menu */}
                                                             <button 
                                                                 onClick={() => openPermissionModal(u)}
-                                                                className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 dark:text-indigo-300 font-bold text-[11px] flex items-center gap-1.5 transition-all shadow-xs"
+                                                                className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 dark:text-indigo-300 font-bold text-[11px] flex items-center gap-1.5 transition-all shadow-sm"
                                                                 title="Atur Hak Akses Menu"
                                                             >
                                                                 <KeyRound className="w-3.5 h-3.5" />
@@ -423,7 +444,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                 </div>
                             </div>
                             <button 
-                                onClick={() => setPermissionModalUser(null)} 
+                                onClick={closePermissionModal} 
                                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                             >
                                 <X className="w-5 h-5" />
@@ -510,7 +531,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                                     <span className={`text-xs font-bold ${isChecked ? 'text-indigo-950 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
                                                         {menu.label}
                                                     </span>
-                                                    <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
                                                         isChecked 
                                                             ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300' 
                                                             : 'bg-slate-100 text-slate-400 dark:bg-slate-700'
@@ -539,7 +560,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                             <div className="pt-5 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setPermissionModalUser(null)}
+                                    onClick={closePermissionModal}
                                     className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                                 >
                                     Batal
@@ -572,7 +593,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                 <UserCheck className="w-5 h-5 text-indigo-600" />
                                 {editingUser ? 'Edit Data Pengguna' : 'Tambah Pengguna Baru'}
                             </h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                            <button onClick={closeModal} className="text-slate-400 hover:text-slate-600">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
@@ -588,7 +609,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-3 h-10 outline-none focus:ring-2 focus:ring-indigo-500"
                                     required
                                 />
-                                {errors.nama_lengkap && <p className="text-[11px] text-rose-500 mt-1">{errors.nama_lengkap}</p>}
+                                {formErrors.nama_lengkap && <p className="text-[11px] text-rose-500 mt-1">{formErrors.nama_lengkap}</p>}
                             </div>
 
                             <div>
@@ -601,7 +622,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                     className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-3 h-10 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                                     required
                                 />
-                                {errors.username && <p className="text-[11px] text-rose-500 mt-1">{errors.username}</p>}
+                                {formErrors.username && <p className="text-[11px] text-rose-500 mt-1">{formErrors.username}</p>}
                             </div>
 
                             <div>
@@ -619,7 +640,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                 <p className="text-[10px] text-slate-400 mt-1">
                                     * Anda juga dapat mengkustomisasi menu secara spesifik melalui tombol <b>"Hak Akses"</b> pada tabel.
                                 </p>
-                                {errors.role && <p className="text-[11px] text-rose-500 mt-1">{errors.role}</p>}
+                                {formErrors.role && <p className="text-[11px] text-rose-500 mt-1">{formErrors.role}</p>}
                             </div>
 
                             <div>
@@ -638,7 +659,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                     />
                                     <Lock className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 </div>
-                                {errors.password && <p className="text-[11px] text-rose-500 mt-1">{errors.password}</p>}
+                                {formErrors.password && <p className="text-[11px] text-rose-500 mt-1">{formErrors.password}</p>}
                             </div>
 
                             <div className="pt-3 flex gap-2">
@@ -651,7 +672,7 @@ export default function PenggunaIndex({ auth, users, availableMenus = [], flash 
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setIsModalOpen(false)}
+                                    onClick={closeModal}
                                     className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                                 >
                                     Batal

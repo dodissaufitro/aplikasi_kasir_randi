@@ -53,6 +53,7 @@ class User extends Authenticatable
         'barang',
         'stok-masuk',
         'pelanggan',
+        'laporan',
         'pengguna',
     ];
 
@@ -63,7 +64,7 @@ class User extends Authenticatable
     {
         return match ($role) {
             'superadmin' => self::ALL_MENUS,
-            'admin' => ['dashboard', 'kasir', 'transaksi', 'barang', 'stok-masuk', 'pelanggan'],
+            'admin' => ['dashboard', 'kasir', 'transaksi', 'barang', 'stok-masuk', 'pelanggan', 'laporan'],
             'kasir' => ['dashboard', 'kasir', 'transaksi'],
             default => ['dashboard'],
         };
