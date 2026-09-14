@@ -73,6 +73,68 @@ class TransaksiController extends Controller
 
         $transaksi = $query->get();
 
+        // Fallback jika PhpSpreadsheet belum terpasang di server
+        if (!class_exists(\PhpOffice\PhpSpreadsheet\Spreadsheet::class)) {
+            $fileName = 'Laporan_Transaksi_' . date('Ymd_His') . '.csv';
+            return response()->streamDownload(function () use ($transaksi) {
+                $handle = fopen('php://output', 'w');
+                // UTF-8 BOM agar rapi saat dibuka di Microsoft Excel
+                fputs($handle, "\xEF\xBB\xBF");
+                fputcsv($handle, [
+                    'No',
+                    'ID Transaksi',
+                    'Tanggal & Waktu',
+                    'Nama Pelanggan',
+                    'No. Telepon',
+                    'Rincian Barang Terjual',
+                    'Total Belanja (Rp)',
+                    'Metode Bayar',
+                    'Status'
+                ]);
+
+                $no = 1;
+                $totalOmzet = 0;
+                $totalPiutang = 0;
+
+                foreach ($transaksi as $t) {
+                    $totalOmzet += $t->total_belanja;
+                    if ($t->status_pembayaran !== 'lunas') {
+                        $totalPiutang += $t->total_belanja;
+                    }
+
+                    $itemDetails = [];
+                    foreach ($t->detailTransaksi as $d) {
+                        $namaBrg = $d->barang ? $d->barang->nama_barang : 'Barang Terhapus';
+                        $itemDetails[] = "{$namaBrg} ({$d->jumlah} x " . number_format($d->harga_satuan, 0, ',', '.') . ")";
+                    }
+                    $itemString = implode(" | ", $itemDetails);
+                    $waktuFormatted = Carbon::parse($t->tanggal)->locale('id')->isoFormat('dddd, D MMM Y HH:mm') . ' WIB';
+
+                    fputcsv($handle, [
+                        $no++,
+                        "#TRX-" . str_pad($t->id_transaksi, 4, '0', STR_PAD_LEFT),
+                        $waktuFormatted,
+                        $t->pelanggan ? $t->pelanggan->nama_pelanggan : 'Pelanggan Umum',
+                        $t->pelanggan && $t->pelanggan->no_telp ? $t->pelanggan->no_telp : '-',
+                        $itemString,
+                        $t->total_belanja,
+                        strtoupper($t->jenis_pembayaran),
+                        strtoupper($t->status_pembayaran === 'lunas' ? 'Lunas' : 'Hutang')
+                    ]);
+                }
+
+                // Baris kosong dan ringkasan
+                fputcsv($handle, []);
+                fputcsv($handle, ['', '', '', '', '', 'TOTAL OMZET KESELURUHAN', $totalOmzet]);
+                fputcsv($handle, ['', '', '', '', '', 'TOTAL PIUTANG (BELUM LUNAS)', $totalPiutang]);
+
+                fclose($handle);
+            }, $fileName, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            ]);
+        }
+
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Laporan Transaksi');
