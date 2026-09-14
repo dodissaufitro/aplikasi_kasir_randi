@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Barang;
 use App\Models\BarangSatuanKonversi;
+use App\Models\DetailTransaksi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -14,14 +15,28 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BarangController extends Controller
 {
     public function index()
     {
+        $terjualMap = DetailTransaksi::whereHas('transaksi', function ($q) {
+                $q->where('status_transaksi', 'selesai');
+            })
+            ->select('id_barang', DB::raw('SUM(jumlah * COALESCE(rasio_konversi, 1)) as total_terjual'))
+            ->groupBy('id_barang')
+            ->pluck('total_terjual', 'id_barang');
+
         $barang = Barang::with('satuanKonversi')
             ->orderBy('id_barang', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($b) use ($terjualMap) {
+                $qty = (int) ($terjualMap[$b->id_barang] ?? 0);
+                $b->total_terjual = $qty;
+                $b->total_terjual_text = $b->formatKonversiText($qty);
+                return $b;
+            });
 
         $kategoriList = Barang::whereNotNull('kategori')
             ->where('kategori', '!=', '')
@@ -210,6 +225,13 @@ class BarangController extends Controller
 
     public function export()
     {
+        $terjualMap = DetailTransaksi::whereHas('transaksi', function ($q) {
+                $q->where('status_transaksi', 'selesai');
+            })
+            ->select('id_barang', DB::raw('SUM(jumlah * COALESCE(rasio_konversi, 1)) as total_terjual'))
+            ->groupBy('id_barang')
+            ->pluck('total_terjual', 'id_barang');
+
         $barang = Barang::with('satuanKonversi')->orderBy('id_barang', 'asc')->get();
 
         $spreadsheet = new Spreadsheet();
@@ -230,7 +252,7 @@ class BarangController extends Controller
             'J1' => 'Harga Grosir (Rp)',
             'K1' => 'Stok',
             'L1' => 'Stok Minimum',
-            'M1' => 'Lokasi / Rak',
+            'M1' => 'Stok Terjual',
             'N1' => 'Status',
             'O1' => 'Konversi Satuan'
         ];
@@ -266,7 +288,8 @@ class BarangController extends Controller
             $sheet->setCellValue("J{$row}", (float)$b->harga_grosir);
             $sheet->setCellValue("K{$row}", (int)$b->stok);
             $sheet->setCellValue("L{$row}", (int)$b->stok_minimum);
-            $sheet->setCellValue("M{$row}", $b->lokasi_rak ?? '-');
+            $terjualQty = (int)($terjualMap[$b->id_barang] ?? 0);
+            $sheet->setCellValue("M{$row}", $b->formatKonversiText($terjualQty));
             $sheet->setCellValue("N{$row}", $b->is_aktif ? 'Aktif' : 'Nonaktif');
             $sheet->setCellValue("O{$row}", $konversiStr);
 
@@ -289,14 +312,15 @@ class BarangController extends Controller
         }
 
         $fileName = 'Data_Barang_' . date('Ymd_His') . '.xlsx';
-        $writer = new Xlsx($spreadsheet);
 
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment; filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer->save('php://output');
-        exit;
+        return new StreamedResponse(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            'Cache-Control' => 'max-age=0',
+        ]);
     }
 
     public function template()
@@ -319,25 +343,24 @@ class BarangController extends Controller
             'J1' => 'harga_grosir',
             'K1' => 'stok',
             'L1' => 'stok_minimum',
-            'M1' => 'lokasi_rak',
-            'N1' => 'satuan_besar',
-            'O1' => 'rasio_konversi',
-            'P1' => 'harga_satuan_besar'
+            'M1' => 'satuan_besar',
+            'N1' => 'rasio_konversi',
+            'O1' => 'harga_satuan_besar'
         ];
 
         foreach ($headers as $cell => $val) {
             $sheet->setCellValue($cell, $val);
         }
 
-        $sheet->getStyle('A1:P1')->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFFFFFFF'));
-        $sheet->getStyle('A1:P1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF059669');
-        $sheet->getStyle('A1:P1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1:O1')->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFFFFFFF'));
+        $sheet->getStyle('A1:O1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF059669');
+        $sheet->getStyle('A1:O1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         // Contoh Data
         $samples = [
-            ['BRG000125', '8998866200225', 'Indomie Goreng Spesial', 'Makanan', 'Indomie', 'PT Indofood', 'PCS', 2700, 3500, 3200, 120, 10, 'Rak A-01', 'Dus', 24, 80000],
-            ['BRG000126', '8991234567890', 'Air Mineral 600ml', 'Minuman', 'Aqua', 'Danone Aqua', 'Botol', 2500, 4000, 3800, 48, 12, 'Etalase Depan', 'Dus', 24, 90000],
-            ['BRG000127', '8999999111222', 'Beras Ramos 5kg', 'Sembako', 'Ramos', 'Sumber Berkah', 'Sak', 65000, 72000, 70000, 20, 5, 'Gudang Belakang', '', '', ''],
+            ['BRG000125', '8998866200225', 'Indomie Goreng Spesial', 'Makanan', 'Indomie', 'PT Indofood', 'PCS', 2700, 3500, 3200, 120, 10, 'Dus', 24, 80000],
+            ['BRG000126', '8991234567890', 'Air Mineral 600ml', 'Minuman', 'Aqua', 'Danone Aqua', 'Botol', 2500, 4000, 3800, 48, 12, 'Dus', 24, 90000],
+            ['BRG000127', '8999999111222', 'Beras Ramos 5kg', 'Sembako', 'Ramos', 'Sumber Berkah', 'Sak', 65000, 72000, 70000, 20, 5, '', '', ''],
         ];
 
         $row = 2;
@@ -349,19 +372,20 @@ class BarangController extends Controller
             $row++;
         }
 
-        foreach (range('A', 'P') as $col) {
+        foreach (range('A', 'O') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         $fileName = 'Template_Import_Barang.xlsx';
-        $writer = new Xlsx($spreadsheet);
 
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment; filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer->save('php://output');
-        exit;
+        return new StreamedResponse(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            'Cache-Control' => 'max-age=0',
+        ]);
     }
 
     public function import(Request $request)
@@ -382,71 +406,167 @@ class BarangController extends Controller
                 return redirect()->back()->withErrors(['error' => 'File kosong atau tidak memiliki baris data.']);
             }
 
+            // Pemetaan Header Cerdas (Bisa membaca file Template maupun file hasil Export Excel)
+            $headers = $rows[0];
+            $colMap = [];
+            foreach ($headers as $idx => $headerText) {
+                if ($headerText === null) continue;
+                $norm = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', (string)$headerText)));
+                $colMap[$norm] = $idx;
+            }
+
+            $findCol = function(array $aliases) use ($colMap) {
+                foreach ($aliases as $alias) {
+                    $norm = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', $alias)));
+                    if (isset($colMap[$norm])) {
+                        return $colMap[$norm];
+                    }
+                }
+                return null;
+            };
+
+            $colKode = $findCol(['kode_barang', 'kode barang', 'kode']);
+            $colBarcode = $findCol(['barcode', 'kode barcode']);
+            $colNama = $findCol(['nama_barang', 'nama barang', 'nama produk', 'nama_produk', 'produk', 'nama']);
+            $colKategori = $findCol(['kategori', 'kategori_produk']);
+            $colMerk = $findCol(['merk', 'brand']);
+            $colSupplier = $findCol(['supplier', 'pemasok']);
+            $colSatuan = $findCol(['satuan', 'satuan_dasar', 'satuan dasar']);
+            $colHargaBeli = $findCol(['harga_beli', 'harga beli', 'harga beli (rp)', 'hpp']);
+            $colHargaJual = $findCol(['harga_jual', 'harga jual', 'harga jual (rp)']);
+            $colHargaGrosir = $findCol(['harga_grosir', 'harga grosir', 'harga grosir (rp)']);
+            $colStok = $findCol(['stok', 'stock', 'stok_akhir', 'jumlah_stok', 'stok barang']);
+            $colStokMin = $findCol(['stok_minimum', 'stok minimum', 'min_stok']);
+            $colStatus = $findCol(['status', 'status_aktif', 'is_aktif']);
+            $colSatuanBesar = $findCol(['satuan_besar', 'satuan besar']);
+            $colRasio = $findCol(['rasio_konversi', 'rasio konversi', 'rasio']);
+            $colHargaBesar = $findCol(['harga_satuan_besar', 'harga satuan besar']);
+            $colKonversiStr = $findCol(['konversi_satuan', 'konversi satuan']);
+
+            // Helper pembersih string
+            $cleanString = function($val) {
+                if ($val === null) return null;
+                $trimmed = trim((string)$val);
+                if ($trimmed === '' || $trimmed === '-') return null;
+                return $trimmed;
+            };
+
+            // Helper pembersih angka & desimal
+            $parseNumber = function($val, $default = 0) {
+                if ($val === null || $val === '' || $val === '-') return $default;
+                if (is_numeric($val)) return (float)$val;
+                $clean = preg_replace('/[^\d.,]/', '', (string)$val);
+                if (preg_match('/^\d{1,3}(\.\d{3})+$/', $clean)) {
+                    $clean = str_replace('.', '', $clean);
+                } elseif (preg_match('/^\d{1,3}(,\d{3})+$/', $clean)) {
+                    $clean = str_replace(',', '', $clean);
+                } else {
+                    $clean = str_replace(',', '.', $clean);
+                }
+                return is_numeric($clean) ? (float)$clean : $default;
+            };
+
+            $parseInteger = function($val, $default = 0) use ($parseNumber) {
+                return (int) round($parseNumber($val, $default));
+            };
+
             $inserted = 0;
             $updated = 0;
 
             for ($i = 1; $i < count($rows); $i++) {
                 $row = $rows[$i];
 
-                $kodeBarang = isset($row[0]) ? trim((string)$row[0]) : '';
-                $barcode = isset($row[1]) ? trim((string)$row[1]) : null;
-                $namaBarang = isset($row[2]) ? trim((string)$row[2]) : '';
-                $kategori = isset($row[3]) && !empty($row[3]) ? trim((string)$row[3]) : 'Umum';
-                $merk = isset($row[4]) ? trim((string)$row[4]) : null;
-                $supplier = isset($row[5]) ? trim((string)$row[5]) : null;
-                $satuan = isset($row[6]) && !empty($row[6]) ? trim((string)$row[6]) : 'PCS';
-                $hargaBeli = isset($row[7]) ? (float)str_replace([',', '.'], '', (string)$row[7]) : 0;
-                $hargaJual = isset($row[8]) ? (float)str_replace([',', '.'], '', (string)$row[8]) : 0;
-                $hargaGrosir = isset($row[9]) && !empty($row[9]) ? (float)str_replace([',', '.'], '', (string)$row[9]) : null;
-                $stok = isset($row[10]) ? (int)str_replace([',', '.'], '', (string)$row[10]) : 0;
-                $stokMinimum = isset($row[11]) && !empty($row[11]) ? (int)str_replace([',', '.'], '', (string)$row[11]) : 5;
-                $lokasiRak = isset($row[12]) ? trim((string)$row[12]) : null;
+                // Ambil nilai berdasarkan kolom cerdas atau fallback index
+                $kodeBarang = $cleanString($colKode !== null ? ($row[$colKode] ?? null) : ($row[0] ?? null));
+                $barcode = $cleanString($colBarcode !== null ? ($row[$colBarcode] ?? null) : ($row[1] ?? null));
+                $namaBarang = $cleanString($colNama !== null ? ($row[$colNama] ?? null) : ($row[2] ?? null));
+                $kategori = $cleanString($colKategori !== null ? ($row[$colKategori] ?? null) : ($row[3] ?? null)) ?? 'Umum';
+                $merk = $cleanString($colMerk !== null ? ($row[$colMerk] ?? null) : ($row[4] ?? null));
+                $supplier = $cleanString($colSupplier !== null ? ($row[$colSupplier] ?? null) : ($row[5] ?? null));
+                $satuan = $cleanString($colSatuan !== null ? ($row[$colSatuan] ?? null) : ($row[6] ?? null)) ?? 'PCS';
+                
+                $hargaBeli = $parseNumber($colHargaBeli !== null ? ($row[$colHargaBeli] ?? 0) : ($row[7] ?? 0));
+                $hargaJual = $parseNumber($colHargaJual !== null ? ($row[$colHargaJual] ?? 0) : ($row[8] ?? 0));
+                $hargaGrosirVal = $colHargaGrosir !== null ? ($row[$colHargaGrosir] ?? null) : ($row[9] ?? null);
+                $hargaGrosir = ($hargaGrosirVal !== null && $hargaGrosirVal !== '' && $hargaGrosirVal !== '-') 
+                    ? $parseNumber($hargaGrosirVal) 
+                    : null;
+                
+                $stok = $parseInteger($colStok !== null ? ($row[$colStok] ?? 0) : ($row[10] ?? 0));
+                $stokMinimum = $parseInteger($colStokMin !== null ? ($row[$colStokMin] ?? 5) : ($row[11] ?? 5), 5);
 
-                // Konversi satuan opsional dari template (kolom N, O, P)
-                $satuanBesar = isset($row[13]) ? trim((string)$row[13]) : '';
-                $rasioKonversi = isset($row[14]) ? (int)str_replace([',', '.'], '', (string)$row[14]) : 0;
-                $hargaBesar = isset($row[15]) && !empty($row[15]) ? (float)str_replace([',', '.'], '', (string)$row[15]) : null;
+                $statusText = $colStatus !== null ? strtolower(trim((string)($row[$colStatus] ?? ''))) : 'aktif';
+                $isAktif = !in_array($statusText, ['nonaktif', 'non-aktif', '0', 'false', 'inactive']);
 
-                if (empty($namaBarang)) {
+                // Konversi satuan
+                $satuanBesar = $cleanString($colSatuanBesar !== null ? ($row[$colSatuanBesar] ?? null) : null);
+                $rasioKonversi = $colRasio !== null ? $parseInteger($row[$colRasio] ?? 0) : 0;
+                $hargaBesar = $colHargaBesar !== null ? $parseNumber($row[$colHargaBesar] ?? 0) : null;
+                $konversiStr = $cleanString($colKonversiStr !== null ? ($row[$colKonversiStr] ?? null) : null);
+
+                // Jika nama barang dan kode barang kosong, lewati baris ini
+                if (empty($namaBarang) && empty($kodeBarang)) {
                     continue;
                 }
 
+                // Cari barang yang sudah ada untuk update stok & data
                 $existing = null;
                 if (!empty($kodeBarang)) {
                     $existing = Barang::where('kode_barang', $kodeBarang)->first();
                 }
-
-                $payload = [
-                    'barcode' => $barcode ?: null,
-                    'nama_barang' => $namaBarang,
-                    'kategori' => $kategori,
-                    'merk' => $merk ?: null,
-                    'supplier' => $supplier ?: null,
-                    'satuan' => $satuan,
-                    'harga_beli' => $hargaBeli,
-                    'harga_jual' => $hargaJual,
-                    'harga_grosir' => $hargaGrosir,
-                    'stok' => $stok,
-                    'stok_minimum' => $stokMinimum,
-                    'lokasi_rak' => $lokasiRak ?: null,
-                    'is_aktif' => true,
-                ];
+                if (!$existing && !empty($barcode)) {
+                    $existing = Barang::where('barcode', $barcode)->first();
+                }
+                if (!$existing && !empty($namaBarang)) {
+                    $existing = Barang::where('nama_barang', $namaBarang)->first();
+                }
 
                 if ($existing) {
-                    $existing->update($payload);
+                    // Update data barang yang sudah ada (termasuk stok dari file Excel)
+                    $existing->stok = $stok;
+                    if (!empty($namaBarang)) $existing->nama_barang = $namaBarang;
+                    if ($barcode !== null) $existing->barcode = $barcode;
+                    if ($kategori !== null) $existing->kategori = $kategori;
+                    if ($merk !== null) $existing->merk = $merk;
+                    if ($supplier !== null) $existing->supplier = $supplier;
+                    if ($satuan !== null) $existing->satuan = $satuan;
+                    if ($hargaBeli > 0) $existing->harga_beli = $hargaBeli;
+                    if ($hargaJual > 0) $existing->harga_jual = $hargaJual;
+                    if ($hargaGrosir !== null) $existing->harga_grosir = $hargaGrosir;
+                    if ($colStokMin !== null) $existing->stok_minimum = $stokMinimum;
+                    if ($colStatus !== null) $existing->is_aktif = $isAktif;
+
+                    $existing->save();
                     $barangObj = $existing;
                     $updated++;
                 } else {
+                    // Tambahkan barang baru
                     if (empty($kodeBarang)) {
                         $latest = Barang::max('id_barang') ?? 0;
                         $kodeBarang = 'BRG' . str_pad($latest + $inserted + 1, 6, '0', STR_PAD_LEFT);
                     }
-                    $payload['kode_barang'] = $kodeBarang;
+
+                    $payload = [
+                        'kode_barang' => $kodeBarang,
+                        'barcode' => $barcode ?: null,
+                        'nama_barang' => $namaBarang ?: 'Produk ' . $kodeBarang,
+                        'kategori' => $kategori,
+                        'merk' => $merk,
+                        'supplier' => $supplier,
+                        'satuan' => $satuan,
+                        'harga_beli' => $hargaBeli,
+                        'harga_jual' => $hargaJual,
+                        'harga_grosir' => $hargaGrosir,
+                        'stok' => $stok,
+                        'stok_minimum' => $stokMinimum,
+                        'is_aktif' => $isAktif,
+                    ];
+
                     $barangObj = Barang::create($payload);
                     $inserted++;
                 }
 
-                // Jika ada konversi satuan besar
+                // 1. Simpan konversi satuan dari kolom terpisah (Template)
                 if (!empty($satuanBesar) && $rasioKonversi > 1) {
                     BarangSatuanKonversi::updateOrCreate(
                         [
@@ -455,15 +575,40 @@ class BarangController extends Controller
                         ],
                         [
                             'rasio_konversi' => $rasioKonversi,
-                            'harga_jual_satuan' => $hargaBesar,
+                            'harga_jual_satuan' => $hargaBesar > 0 ? $hargaBesar : null,
                         ]
                     );
+                }
+
+                // 2. Simpan konversi satuan dari teks gabungan (Export: misal "1 Dus = 24 PCS (Rp 80.000)")
+                if (!empty($konversiStr)) {
+                    $parts = explode(';', $konversiStr);
+                    foreach ($parts as $part) {
+                        if (preg_match('/1\s+([^=]+)\s*=\s*(\d+)\s*([^(]+)(?:\(Rp\s*([0-9\.,]+)\))?/i', $part, $m)) {
+                            $namaKonv = trim($m[1]);
+                            $rasioKonv = (int)$m[2];
+                            $hargaKonv = !empty($m[4]) ? (float)str_replace(['.', ','], '', $m[4]) : null;
+
+                            if (!empty($namaKonv) && $rasioKonv > 1) {
+                                BarangSatuanKonversi::updateOrCreate(
+                                    [
+                                        'id_barang' => $barangObj->id_barang,
+                                        'nama_satuan' => $namaKonv,
+                                    ],
+                                    [
+                                        'rasio_konversi' => $rasioKonv,
+                                        'harga_jual_satuan' => $hargaKonv,
+                                    ]
+                                );
+                            }
+                        }
+                    }
                 }
             }
 
             DB::commit();
 
-            return redirect()->back()->with('success', "Proses import berhasil! {$inserted} barang baru ditambahkan, {$updated} barang diperbarui.");
+            return redirect()->back()->with('success', "Proses import berhasil! {$inserted} barang baru ditambahkan, {$updated} data barang / stok berhasil diperbarui.");
 
         } catch (\Exception $e) {
             DB::rollBack();

@@ -41,6 +41,8 @@ interface Barang {
     harga_grosir?: number | null;
     stok: number;
     stok_konversi_text?: string;
+    total_terjual?: number;
+    total_terjual_text?: string;
     satuan_konversi?: SatuanKonversi[];
 }
 
@@ -148,6 +150,37 @@ export default function Kasir({ auth, barang, pelanggan, flash }: Props) {
         kasirNama: string;
         waktu: string;
     } | null>(null);
+
+    // Auto focus scan input saat pertama kali load dan listener global keydown untuk barcode scanner
+    useEffect(() => {
+        if (scanInputRef.current) {
+            scanInputRef.current.focus();
+        }
+
+        const handleGlobalKeyDown = (e: KeyboardEvent) => {
+            const activeEl = document.activeElement;
+            const isTypingInOtherInput = activeEl && (
+                activeEl.tagName === 'INPUT' || 
+                activeEl.tagName === 'TEXTAREA' || 
+                activeEl.tagName === 'SELECT'
+            ) && activeEl !== scanInputRef.current;
+
+            // Jika sedang mengetik di input lain atau modal sedang terbuka, jangan intersep
+            if (isTypingInOtherInput || showReceipt || showAddPelangganModal) {
+                return;
+            }
+
+            // Jika bukan tombol shortcut sistem, fokuskan ke scanner
+            if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                if (scanInputRef.current && document.activeElement !== scanInputRef.current) {
+                    scanInputRef.current.focus();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [showReceipt, showAddPelangganModal]);
 
     // Filter barang
     const filteredBarang = useMemo(() => {
@@ -275,10 +308,9 @@ export default function Kasir({ auth, barang, pelanggan, flash }: Props) {
         });
     };
 
-    // Handler Scan Barcode Langsung Masuk Pesanan (Mendukung Barcode Fisik & Barcode Karton/Dus)
-    const handleScanBarcodeSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const code = scanBarcode.trim();
+    // Eksekusi Pencarian & Penambahan Barang Otomatis ke Keranjang
+    const processScanCode = (rawCode: string) => {
+        const code = rawCode.trim();
         if (!code) return;
 
         let matchedUnit: string | null = null;
@@ -346,7 +378,45 @@ export default function Kasir({ auth, barang, pelanggan, flash }: Props) {
         setScanBarcode('');
         setTimeout(() => {
             if (scanInputRef.current) scanInputRef.current.focus();
-        }, 50);
+        }, 30);
+    };
+
+    // Handler input scan barcode - otomatis menambahkan ke list pesanan ketika barcode/kode cocok
+    const handleScanInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setScanBarcode(val);
+
+        const trimmed = val.trim().toLowerCase();
+        if (trimmed.length < 3) return;
+
+        // Cek apakah masih ada kode/barcode barang lain yang lebih panjang yang diawali dengan string ini
+        const hasLongerPrefixMatch = barang.some(b => {
+            if (b.barcode && b.barcode.toLowerCase().startsWith(trimmed) && b.barcode.length > trimmed.length) return true;
+            if (b.kode_barang && b.kode_barang.toLowerCase().startsWith(trimmed) && b.kode_barang.length > trimmed.length) return true;
+            if (b.satuan_konversi?.some(k => k.barcode_satuan && k.barcode_satuan.toLowerCase().startsWith(trimmed) && k.barcode_satuan.length > trimmed.length)) return true;
+            return false;
+        });
+
+        if (!hasLongerPrefixMatch) {
+            // Cek apakah persis cocok dengan salah satu barang yang terdaftar
+            const exactMatch = barang.some(b => {
+                if (b.barcode && b.barcode.toLowerCase() === trimmed) return true;
+                if (b.kode_barang && b.kode_barang.toLowerCase() === trimmed) return true;
+                if (b.satuan_konversi?.some(k => k.barcode_satuan && k.barcode_satuan.toLowerCase() === trimmed)) return true;
+                return false;
+            });
+
+            if (exactMatch) {
+                // Otomatis langsung tambahkan ke list belanja!
+                processScanCode(val);
+            }
+        }
+    };
+
+    // Handler submit (ketika scanner hardware mengirimkan Enter atau ditekan Enter)
+    const handleScanBarcodeSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        processScanCode(scanBarcode);
     };
 
     // Tambah Pelanggan Baru Langsung dari Kasir
@@ -491,18 +561,22 @@ export default function Kasir({ auth, barang, pelanggan, flash }: Props) {
                                 <input 
                                     ref={scanInputRef}
                                     type="text" 
-                                    placeholder="⚡ SCAN BARCODE / KETIK KODE BARANG LALU ENTER..." 
+                                    placeholder="⚡ SCAN BARCODE / KETIK KODE BARANG (OTOMATIS MASUK)..." 
                                     value={scanBarcode}
-                                    onChange={(e) => setScanBarcode(e.target.value)}
-                                    className="w-full pl-11 pr-24 py-2.5 bg-indigo-50/60 dark:bg-indigo-950/40 text-slate-900 dark:text-white text-xs font-mono font-bold tracking-wider placeholder:text-indigo-400/80 border-2 border-indigo-200 dark:border-indigo-800 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950 rounded-xl outline-none transition-all"
+                                    onChange={handleScanInputChange}
+                                    className="w-full pl-11 pr-10 py-2.5 bg-indigo-50/60 dark:bg-indigo-950/40 text-slate-900 dark:text-white text-xs font-mono font-bold tracking-wider placeholder:text-indigo-400/80 border-2 border-indigo-200 dark:border-indigo-800 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950 rounded-xl outline-none transition-all shadow-inner"
                                     autoFocus
                                 />
-                                <button 
-                                    type="submit"
-                                    className="absolute right-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-sm flex items-center gap-1 transition-all"
-                                >
-                                    <Plus className="w-3.5 h-3.5" /> Masuk
-                                </button>
+                                {scanBarcode && (
+                                    <button 
+                                        type="button"
+                                        onClick={() => setScanBarcode('')}
+                                        className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-md transition-colors"
+                                        title="Hapus"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
                         </form>
 
@@ -574,8 +648,17 @@ export default function Kasir({ auth, barang, pelanggan, flash }: Props) {
                                         )}
                                     </div>
                                     <h3 className="font-semibold text-sm text-slate-900 dark:text-white line-clamp-1 group-hover:text-indigo-600 transition-colors">{item.nama_barang}</h3>
-                                    <div className="flex items-center justify-between mt-1">
-                                        <span className="text-xs text-slate-500">Stok: <b className="text-slate-700 dark:text-slate-300">{item.stok_konversi_text || `${item.stok} ${item.satuan || 'PCS'}`}</b></span>
+                                    <div className="mt-1.5 space-y-0.5">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-slate-400 text-[11px]">Stok:</span>
+                                            <b className="text-slate-700 dark:text-slate-300 truncate ml-1">{item.stok_konversi_text || `${item.stok} ${item.satuan || 'PCS'}`}</b>
+                                        </div>
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-slate-400 text-[11px]">Terjual:</span>
+                                            <b className={`truncate ml-1 font-bold ${(item.total_terjual || 0) > 0 ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                                                {item.total_terjual_text || `${item.total_terjual || 0} ${item.satuan || 'PCS'}`}
+                                            </b>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="mt-3 pt-2 border-t border-slate-50 dark:border-slate-800 flex items-center justify-between">

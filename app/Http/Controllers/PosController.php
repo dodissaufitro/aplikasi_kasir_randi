@@ -14,10 +14,23 @@ class PosController extends Controller
 {
     public function index()
     {
+        $terjualMap = DetailTransaksi::whereHas('transaksi', function ($q) {
+                $q->where('status_transaksi', 'selesai');
+            })
+            ->select('id_barang', DB::raw('SUM(jumlah * COALESCE(rasio_konversi, 1)) as total_terjual'))
+            ->groupBy('id_barang')
+            ->pluck('total_terjual', 'id_barang');
+
         $barang = Barang::with('satuanKonversi')
             ->where('stok', '>', 0)
             ->where('is_aktif', true)
-            ->get();
+            ->get()
+            ->map(function ($b) use ($terjualMap) {
+                $qty = (int) ($terjualMap[$b->id_barang] ?? 0);
+                $b->total_terjual = $qty;
+                $b->total_terjual_text = $b->formatKonversiText($qty);
+                return $b;
+            });
 
         $pelanggan = Pelanggan::all();
 

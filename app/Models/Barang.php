@@ -43,6 +43,8 @@ class Barang extends Model
     protected $appends = [
         'foto_url',
         'stok_konversi_text',
+        'total_terjual',
+        'total_terjual_text',
     ];
 
     public function satuanKonversi()
@@ -69,21 +71,18 @@ class Barang extends Model
     }
 
     /**
-     * Helper kalkulasi stok pintar dengan konversi multi-satuan
-     * Contoh: Stok 120 PCS dengan konversi 1 Dus = 24 PCS -> "120 PCS (5 Dus)"
-     * Contoh: Stok 117 PCS dengan konversi 1 Dus = 24 PCS -> "117 PCS (4 Dus 21 PCS)"
+     * Helper format jumlah kuantitas dengan konversi satuan bertingkat
      */
-    public function getStokKonversiTextAttribute(): string
+    public function formatKonversiText(int $qty): string
     {
         $baseSatuan = $this->satuan ?: 'PCS';
-        $stok = (int) $this->stok;
 
         $konversiList = $this->relationLoaded('satuanKonversi') 
             ? $this->satuanKonversi 
             : $this->satuanKonversi()->get();
 
         if ($konversiList->isEmpty()) {
-            return "{$stok} {$baseSatuan}";
+            return "{$qty} {$baseSatuan}";
         }
 
         // Ambil satuan konversi terbesar (rasio tertinggi)
@@ -91,18 +90,38 @@ class Barang extends Model
         $rasio = (int) $topKonversi->rasio_konversi;
 
         if ($rasio <= 1) {
-            return "{$stok} {$baseSatuan}";
+            return "{$qty} {$baseSatuan}";
         }
 
-        $jumlahBesar = intdiv($stok, $rasio);
-        $sisaKecil = $stok % $rasio;
+        $jumlahBesar = intdiv($qty, $rasio);
+        $sisaKecil = $qty % $rasio;
 
         if ($jumlahBesar > 0 && $sisaKecil === 0) {
-            return "{$stok} {$baseSatuan} ({$jumlahBesar} {$topKonversi->nama_satuan})";
+            return "{$qty} {$baseSatuan} ({$jumlahBesar} {$topKonversi->nama_satuan})";
         } elseif ($jumlahBesar > 0 && $sisaKecil > 0) {
-            return "{$stok} {$baseSatuan} ({$jumlahBesar} {$topKonversi->nama_satuan} {$sisaKecil} {$baseSatuan})";
+            return "{$qty} {$baseSatuan} ({$jumlahBesar} {$topKonversi->nama_satuan} {$sisaKecil} {$baseSatuan})";
         } else {
-            return "{$stok} {$baseSatuan}";
+            return "{$qty} {$baseSatuan}";
         }
+    }
+
+    /**
+     * Helper kalkulasi stok pintar dengan konversi multi-satuan
+     * Contoh: Stok 120 PCS dengan konversi 1 Dus = 24 PCS -> "120 PCS (5 Dus)"
+     * Contoh: Stok 117 PCS dengan konversi 1 Dus = 24 PCS -> "117 PCS (4 Dus 21 PCS)"
+     */
+    public function getStokKonversiTextAttribute(): string
+    {
+        return $this->formatKonversiText((int) $this->stok);
+    }
+
+    public function getTotalTerjualAttribute(): int
+    {
+        return (int) ($this->attributes['total_terjual'] ?? 0);
+    }
+
+    public function getTotalTerjualTextAttribute(): string
+    {
+        return $this->formatKonversiText($this->total_terjual);
     }
 }
