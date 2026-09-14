@@ -426,11 +426,17 @@ export default function Kasir({ auth, barang, pelanggan, flash }: Props) {
 
         setIsSubmittingPelanggan(true);
         try {
+            const metaToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+            const cookieMatch = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+            const xsrfToken = cookieMatch ? decodeURIComponent(cookieMatch[1]) : '';
+            const csrfToken = metaToken || xsrfToken || '';
+
             const response = await fetch('/kasir/quick-pelanggan', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-XSRF-TOKEN': xsrfToken,
                     'Accept': 'application/json',
                 },
                 body: JSON.stringify({
@@ -440,7 +446,7 @@ export default function Kasir({ auth, barang, pelanggan, flash }: Props) {
             });
 
             const result = await response.json();
-            if (result.success && result.pelanggan) {
+            if ((result.success || result.status === 'success') && result.pelanggan) {
                 setLocalPelangganList(prev => [result.pelanggan, ...prev]);
                 setSelectedPelanggan(result.pelanggan.id_pelanggan.toString());
                 setShowAddPelangganModal(false);

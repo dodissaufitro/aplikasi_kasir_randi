@@ -234,6 +234,51 @@ class BarangController extends Controller
 
         $barang = Barang::with('satuanKonversi')->orderBy('id_barang', 'asc')->get();
 
+        // Fallback jika PhpSpreadsheet belum terinstal di server VPS
+        if (!class_exists(\PhpOffice\PhpSpreadsheet\Spreadsheet::class)) {
+            $fileName = 'Data_Barang_' . date('Ymd_His') . '.csv';
+            return response()->streamDownload(function () use ($barang, $terjualMap) {
+                $handle = fopen('php://output', 'w');
+                // UTF-8 BOM agar dibuka rapi di Microsoft Excel
+                fputs($handle, "\xEF\xBB\xBF");
+                fputcsv($handle, [
+                    'Kode Barang', 'Barcode', 'Nama Produk', 'Kategori', 'Merk', 'Supplier',
+                    'Satuan Dasar', 'Harga Beli (Rp)', 'Harga Jual (Rp)', 'Harga Grosir (Rp)',
+                    'Stok', 'Stok Minimum', 'Stok Terjual', 'Status', 'Konversi Satuan'
+                ]);
+                foreach ($barang as $b) {
+                    $konversiStr = $b->satuanKonversi->map(function ($k) use ($b) {
+                        $txt = "1 {$k->nama_satuan} = {$k->rasio_konversi} {$b->satuan}";
+                        if ($k->harga_jual_satuan) {
+                            $txt .= " (Rp " . number_format($k->harga_jual_satuan, 0, ',', '.') . ")";
+                        }
+                        return $txt;
+                    })->implode('; ');
+                    $terjualQty = (int)($terjualMap[$b->id_barang] ?? 0);
+                    fputcsv($handle, [
+                        $b->kode_barang,
+                        $b->barcode ?? '-',
+                        $b->nama_barang,
+                        $b->kategori ?? 'Umum',
+                        $b->merk ?? '-',
+                        $b->supplier ?? '-',
+                        $b->satuan,
+                        $b->harga_beli,
+                        $b->harga_jual,
+                        $b->harga_grosir,
+                        $b->stok,
+                        $b->stok_minimum,
+                        $b->formatKonversiText($terjualQty),
+                        $b->is_aktif ? 'Aktif' : 'Nonaktif',
+                        $konversiStr,
+                    ]);
+                }
+                fclose($handle);
+            }, $fileName, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        }
+
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Master Data Barang');
@@ -325,6 +370,31 @@ class BarangController extends Controller
 
     public function template()
     {
+        // Fallback jika PhpSpreadsheet belum terinstal di server VPS
+        if (!class_exists(\PhpOffice\PhpSpreadsheet\Spreadsheet::class)) {
+            $fileName = 'Template_Import_Barang.csv';
+            return response()->streamDownload(function () {
+                $handle = fopen('php://output', 'w');
+                fputs($handle, "\xEF\xBB\xBF");
+                fputcsv($handle, [
+                    'kode_barang', 'barcode', 'nama_barang', 'kategori', 'merk', 'supplier',
+                    'satuan', 'harga_beli', 'harga_jual', 'harga_grosir', 'stok', 'stok_minimum',
+                    'satuan_besar', 'rasio_konversi', 'harga_satuan_besar'
+                ]);
+                $samples = [
+                    ['BRG000125', '8998866200225', 'Indomie Goreng Spesial', 'Makanan', 'Indomie', 'PT Indofood', 'PCS', 2700, 3500, 3200, 120, 10, 'Dus', 24, 80000],
+                    ['BRG000126', '8991234567890', 'Air Mineral 600ml', 'Minuman', 'Aqua', 'Danone Aqua', 'Botol', 2500, 4000, 3800, 48, 12, 'Dus', 24, 90000],
+                    ['BRG000127', '8999999111222', 'Beras Ramos 5kg', 'Sembako', 'Ramos', 'Sumber Berkah', 'Sak', 65000, 72000, 70000, 20, 5, '', '', ''],
+                ];
+                foreach ($samples as $s) {
+                    fputcsv($handle, $s);
+                }
+                fclose($handle);
+            }, $fileName, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        }
+
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Template Import Barang');
@@ -398,9 +468,28 @@ class BarangController extends Controller
             DB::beginTransaction();
 
             $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getRealPath());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
+            $extension = strtolower($file->getClientOriginalExtension());
+
+            if (!class_exists(\PhpOffice\PhpSpreadsheet\IOFactory::class)) {
+                if ($extension === 'csv' || $extension === 'txt') {
+                    $rows = [];
+                    if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
+                        while (($data = fgetcsv($handle, 10000, ',')) !== false) {
+                            if (count($data) === 1 && strpos($data[0], ';') !== false) {
+                                $data = str_getcsv($data[0], ';');
+                            }
+                            $rows[] = $data;
+                        }
+                        fclose($handle);
+                    }
+                } else {
+                    return redirect()->back()->withErrors(['error' => "Library PhpSpreadsheet belum terinstal di server VPS. Silakan jalankan 'composer install' di server VPS, atau unggah file berformat .csv terlebih dahulu."]);
+                }
+            } else {
+                $spreadsheet = IOFactory::load($file->getRealPath());
+                $sheet = $spreadsheet->getActiveSheet();
+                $rows = $sheet->toArray();
+            }
 
             if (count($rows) <= 1) {
                 return redirect()->back()->withErrors(['error' => 'File kosong atau tidak memiliki baris data.']);

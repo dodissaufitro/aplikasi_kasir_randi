@@ -135,6 +135,7 @@ class PosController extends Controller
 
         return response()->json([
             'status' => 'success',
+            'success' => true,
             'message' => 'Pelanggan berhasil ditambahkan.',
             'pelanggan' => $pelanggan,
         ]);

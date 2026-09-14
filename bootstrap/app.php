@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'menu.access' => \App\Http\Middleware\CheckMenuAccess::class,
         ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'kasir/quick-pelanggan',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
