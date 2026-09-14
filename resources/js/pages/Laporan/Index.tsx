@@ -198,7 +198,6 @@ export default function LaporanIndex({
     }, [selectedTab, selectedPeriode, startDate, endDate, subFilterState]);
 
     const excelUrl = `/laporan/export-excel?${exportQueryString}`;
-    const csvUrl = `/laporan/export-csv?${exportQueryString}`;
 
     // Filtered items based on search keyword
     const filteredTransaksi = useMemo(() => {
@@ -259,27 +258,16 @@ export default function LaporanIndex({
                         <div className="flex flex-wrap items-center gap-2">
                             <a
                                 href={excelUrl}
-                                download
-                                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs hover:shadow-md transition-all"
+                                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
                                 title="Download Laporan Excel (.xlsx)"
                             >
                                 <FileSpreadsheet className="w-4 h-4" />
                                 <span>Download Excel</span>
                             </a>
 
-                            <a
-                                href={csvUrl}
-                                download
-                                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-slate-700 hover:bg-slate-800 text-white rounded-xl shadow-xs hover:shadow-md transition-all"
-                                title="Download Laporan Format CSV"
-                            >
-                                <Download className="w-4 h-4" />
-                                <span>Download CSV</span>
-                            </a>
-
                             <button
                                 onClick={handlePrint}
-                                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs hover:shadow-md transition-all"
+                                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
                                 title="Cetak Laporan Siap Pakai"
                             >
                                 <Printer className="w-4 h-4" />

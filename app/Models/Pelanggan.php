@@ -18,4 +18,26 @@ class Pelanggan extends Model
         'no_telp',
         'total_hutang'
     ];
+
+    protected $casts = [
+        'total_hutang' => 'float',
+    ];
+
+    public function pembayaranHutang()
+    {
+        return $this->hasMany(PembayaranHutang::class, 'id_pelanggan', 'id_pelanggan')->orderBy('tanggal_bayar', 'desc');
+    }
+
+    public function transaksi()
+    {
+        return $this->hasMany(Transaksi::class, 'id_pelanggan', 'id_pelanggan');
+    }
+
+    public function transaksiBelumLunas()
+    {
+        return $this->hasMany(Transaksi::class, 'id_pelanggan', 'id_pelanggan')
+            ->where('status_pembayaran', 'belum_lunas')
+            ->where('status_transaksi', 'selesai')
+            ->orderBy('tanggal', 'asc');
+    }
 }

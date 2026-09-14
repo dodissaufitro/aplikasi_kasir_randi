@@ -60,7 +60,7 @@ class User extends Authenticatable
     /**
      * Get default menu access according to role.
      */
-    public static function getDefaultMenuAccessForRole(string $role): array
+    public static function getDefaultMenuAccessForRole(?string $role = null): array
     {
         return match ($role) {
             'superadmin' => self::ALL_MENUS,
@@ -75,7 +75,9 @@ class User extends Authenticatable
      */
     public function getEffectiveMenuAccessAttribute(): array
     {
-        if ($this->role === 'superadmin') {
+        $role = $this->role ?? null;
+
+        if ($role === 'superadmin') {
             return self::ALL_MENUS;
         }
 
@@ -83,7 +85,7 @@ class User extends Authenticatable
             return array_values(array_intersect(self::ALL_MENUS, $this->menu_access));
         }
 
-        return self::getDefaultMenuAccessForRole($this->role);
+        return self::getDefaultMenuAccessForRole($role);
     }
 
     /**
@@ -91,7 +93,7 @@ class User extends Authenticatable
      */
     public function hasMenuAccess(string $menuKey): bool
     {
-        if ($this->role === 'superadmin') {
+        if (($this->role ?? null) === 'superadmin') {
             return true;
         }
 

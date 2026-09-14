@@ -38,6 +38,7 @@ Route::middleware('auth')->group(function () {
 
     // Data Master: Pelanggan & Hutang
     Route::middleware('menu.access:pelanggan')->group(function () {
+        Route::post('/pelanggan/{id}/bayar-hutang', [App\Http\Controllers\PelangganController::class, 'bayarHutang'])->name('pelanggan.bayar-hutang');
         Route::resource('pelanggan', App\Http\Controllers\PelangganController::class)->except(['create', 'show', 'edit']);
     });
 
@@ -61,7 +62,6 @@ Route::middleware('auth')->group(function () {
     Route::middleware('menu.access:laporan')->group(function () {
         Route::get('/laporan', [App\Http\Controllers\LaporanController::class, 'index'])->name('laporan.index');
         Route::get('/laporan/export-excel', [App\Http\Controllers\LaporanController::class, 'exportExcel'])->name('laporan.export-excel');
-        Route::get('/laporan/export-csv', [App\Http\Controllers\LaporanController::class, 'exportCsv'])->name('laporan.export-csv');
     });
 });
 
