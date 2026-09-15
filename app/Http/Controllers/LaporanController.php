@@ -11,6 +11,12 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LaporanController extends Controller
 {
@@ -446,6 +452,11 @@ class LaporanController extends Controller
      */
     public function exportExcel(Request $request)
     {
+        // Fallback jika PhpSpreadsheet belum terinstal di server VPS
+        if (!class_exists(Spreadsheet::class)) {
+            return $this->exportCsv($request);
+        }
+
         $tab = $request->input('tab', 'penjualan');
         $dates = $this->resolveDateRange($request);
         $startDate = $dates['start'];
