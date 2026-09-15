@@ -319,42 +319,40 @@ class TransaksiController extends Controller
 
             $transaksi = Transaksi::with('detailTransaksi')->findOrFail($id);
 
-            // Jika sudah berstatus void atau retur, cegah pengembalian dobel
-            if (in_array($transaksi->status_transaksi, ['void', 'retur'])) {
-                return redirect()->back()->withErrors(['error' => 'Transaksi ini sudah berstatus ' . strtoupper($transaksi->status_transaksi) . '.']);
-            }
+            // Kembalikan stok barang jika transaksi belum dibatalkan (void/retur) sebelumnya
+            if ($transaksi->status_transaksi !== 'void' && $transaksi->status_transaksi !== 'retur') {
+                foreach ($transaksi->detailTransaksi as $detail) {
+                    $barang = Barang::find($detail->id_barang);
+                    if ($barang) {
+                        $barang->stok += $detail->jumlah;
+                        $barang->save();
+                    }
+                }
 
-            // Kembalikan stok barang
-            foreach ($transaksi->detailTransaksi as $detail) {
-                $barang = Barang::find($detail->id_barang);
-                if ($barang) {
-                    $barang->stok += $detail->jumlah;
-                    $barang->save();
+                // Jika statusnya belum lunas (hutang), kurangi hutang pelanggan
+                if ($transaksi->status_pembayaran === 'belum_lunas' && $transaksi->id_pelanggan) {
+                    $pelanggan = Pelanggan::find($transaksi->id_pelanggan);
+                    if ($pelanggan) {
+                        $pelanggan->total_hutang = max(0, $pelanggan->total_hutang - $transaksi->total_belanja);
+                        $pelanggan->save();
+                    }
                 }
             }
 
-            // Jika statusnya belum lunas (hutang), kurangi hutang pelanggan
-            if ($transaksi->status_pembayaran === 'belum_lunas' && $transaksi->id_pelanggan) {
-                $pelanggan = Pelanggan::find($transaksi->id_pelanggan);
-                if ($pelanggan) {
-                    $pelanggan->total_hutang = max(0, $pelanggan->total_hutang - $transaksi->total_belanja);
-                    $pelanggan->save();
-                }
-            }
+            $idTransaksiFormatted = '#TRX-' . str_pad($transaksi->id_transaksi, 4, '0', STR_PAD_LEFT);
 
-            $actionType = $request->input('action_type') === 'retur' ? 'retur' : 'void';
-            $alasan = $request->input('alasan_batal') ?? ($actionType === 'retur' ? 'Retur barang oleh pelanggan' : 'Dibatalkan (Void) oleh kasir');
+            // Hapus rincian detail transaksi terlebih dahulu
+            $transaksi->detailTransaksi()->delete();
 
-            $transaksi->status_transaksi = $actionType;
-            $transaksi->catatan_batal = $alasan;
-            $transaksi->save();
+            // Hapus data transaksi secara permanen
+            $transaksi->delete();
 
             DB::commit();
 
-            return redirect()->back()->with('success', 'Transaksi berhasil di-' . strtoupper($actionType) . ' dan stok telah dikembalikan.');
+            return redirect()->back()->with('success', "Transaksi {$idTransaksiFormatted} berhasil dihapus dan data telah diperbarui.");
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->back()->withErrors(['error' => 'Gagal membatalkan transaksi: ' . $e->getMessage()]);
+            return redirect()->back()->withErrors(['error' => 'Gagal menghapus transaksi: ' . $e->getMessage()]);
         }
     }
 }

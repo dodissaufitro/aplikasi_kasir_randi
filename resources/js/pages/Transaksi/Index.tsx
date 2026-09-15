@@ -48,6 +48,8 @@ interface Transaksi {
     id_pelanggan: number | null;
     total_belanja: number;
     status_pembayaran: string;
+    status_transaksi?: string;
+    catatan_batal?: string;
     pelanggan?: Pelanggan;
     detail_transaksi?: DetailTransaksi[];
 }
@@ -143,9 +145,9 @@ export default function TransaksiIndex({ auth, transaksi, filters, flash }: Prop
         return `/transaksi/export?${params.toString()}`;
     }, [tanggalMulai, tanggalSelesai, statusFilter]);
 
-    // Statistics berdasarkan data tersaring
-    const totalOmzet = useMemo(() => filteredTransaksi.reduce((acc, t) => acc + Number(t.total_belanja), 0), [filteredTransaksi]);
-    const totalPiutang = useMemo(() => filteredTransaksi.filter(t => t.status_pembayaran !== 'lunas').reduce((acc, t) => acc + Number(t.total_belanja), 0), [filteredTransaksi]);
+    // Statistics berdasarkan data tersaring (hanya transaksi selesai yang dihitung ke omzet & piutang)
+    const totalOmzet = useMemo(() => filteredTransaksi.filter(t => !t.status_transaksi || t.status_transaksi === 'selesai').reduce((acc, t) => acc + Number(t.total_belanja), 0), [filteredTransaksi]);
+    const totalPiutang = useMemo(() => filteredTransaksi.filter(t => (!t.status_transaksi || t.status_transaksi === 'selesai') && t.status_pembayaran !== 'lunas').reduce((acc, t) => acc + Number(t.total_belanja), 0), [filteredTransaksi]);
 
     // Pelunasan Hutang
     const handleLunaskan = (id: number) => {
@@ -154,9 +156,9 @@ export default function TransaksiIndex({ auth, transaksi, filters, flash }: Prop
         }
     };
 
-    // Hapus / Batalkan Transaksi
+    // Hapus Transaksi
     const handleDelete = (id: number) => {
-        if (confirm(`Yakin ingin membatalkan transaksi #TRX-${id.toString().padStart(4, '0')}? Stok barang yang terjual akan dikembalikan.`)) {
+        if (confirm(`Yakin ingin menghapus data transaksi #TRX-${id.toString().padStart(4, '0')}? Data transaksi akan dihapus dan stok barang yang terjual akan dikembalikan.`)) {
             router.delete(route('transaksi.destroy', id));
         }
     };
@@ -381,15 +383,22 @@ export default function TransaksiIndex({ auth, transaksi, filters, flash }: Prop
                                                     {formatRupiah(Number(t.total_belanja))}
                                                 </td>
                                                 <td className="py-4 px-6">
-                                                    {t.status_pembayaran === 'lunas' ? (
-                                                        <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 rounded-full font-bold text-[10px]">
-                                                            Lunas
-                                                        </span>
-                                                    ) : (
-                                                        <span className="px-2.5 py-1 bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 rounded-full font-bold text-[10px]">
-                                                            Belum Lunas
-                                                        </span>
-                                                    )}
+                                                    <div className="flex flex-col gap-1 items-start">
+                                                        {t.status_transaksi && t.status_transaksi !== 'selesai' && (
+                                                            <span className="px-2 py-0.5 bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 rounded-md font-bold text-[10px] uppercase">
+                                                                {t.status_transaksi}
+                                                            </span>
+                                                        )}
+                                                        {t.status_pembayaran === 'lunas' ? (
+                                                            <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 rounded-full font-bold text-[10px]">
+                                                                Lunas
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2.5 py-1 bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 rounded-full font-bold text-[10px]">
+                                                                Belum Lunas
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="py-4 px-6">
                                                     <div className="flex items-center justify-center gap-1.5">
@@ -401,7 +410,7 @@ export default function TransaksiIndex({ auth, transaksi, filters, flash }: Prop
                                                             <Eye className="w-4 h-4" />
                                                         </button>
 
-                                                        {t.status_pembayaran === 'belum_lunas' && (
+                                                        {t.status_pembayaran === 'belum_lunas' && (!t.status_transaksi || t.status_transaksi === 'selesai') && (
                                                             <button 
                                                                 onClick={() => handleLunaskan(t.id_transaksi)}
                                                                 title="Tandai Sudah Lunas"
@@ -413,7 +422,7 @@ export default function TransaksiIndex({ auth, transaksi, filters, flash }: Prop
 
                                                         <button 
                                                             onClick={() => handleDelete(t.id_transaksi)}
-                                                            title="Batalkan Transaksi"
+                                                            title="Hapus Transaksi"
                                                             className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
