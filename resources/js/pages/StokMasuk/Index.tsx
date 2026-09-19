@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
+import MobileHeader from '@/components/mobile/MobileHeader';
+import MobileBottomNav from '@/components/mobile/MobileBottomNav';
 
 interface SatuanKonversi {
     nama_satuan: string;
@@ -54,6 +56,8 @@ interface Props {
 export default function StokMasukIndex({ auth, stok_masuk, barang, flash }: Props) {
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [supplier, setSupplier] = useState('');
+    const [catatan, setCatatan] = useState('');
 
     const { data, setData, post, processing, reset, errors } = useForm({
         id_barang: '',
@@ -91,11 +95,169 @@ export default function StokMasukIndex({ auth, stok_masuk, barang, flash }: Prop
     };
 
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
+        <div className="min-h-screen bg-[#0B0F19] text-slate-100 font-sans">
             <Head title="Stok Masuk - Kasir Pro" />
 
-            {/* Sidebar Terpadu */}
-            <Sidebar auth={auth} />
+            {/* ========================================================================= */}
+            {/* TAMPILAN MOBILE (Layar 6: Stok Masuk) Sesuai Poster 100%                 */}
+            {/* ========================================================================= */}
+            <div className="md:hidden flex flex-col min-h-screen pb-20">
+                <MobileHeader
+                    variant="subpage"
+                    title="Stok Masuk"
+                    backUrl="/dashboard"
+                />
+
+                <div className="px-4 py-4 space-y-4">
+                    {flash?.success && (
+                        <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                            <CheckCircle className="w-4 h-4" /> {flash.success}
+                        </div>
+                    )}
+                    {flash?.error && (
+                        <div className="p-3 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-rose-400 text-xs font-semibold flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" /> {flash.error}
+                        </div>
+                    )}
+
+                    {/* Clean Mobile Form Card */}
+                    <form onSubmit={handleSubmit} className="p-5 rounded-3xl bg-[#131B2E] border border-slate-800 space-y-4 shadow-xl">
+                        {/* Tanggal Masuk */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                                Tanggal Masuk
+                            </label>
+                            <input
+                                type="date"
+                                value={data.tanggal_masuk.slice(0, 10)}
+                                onChange={(e) => setData('tanggal_masuk', e.target.value)}
+                                className="w-full px-3.5 py-2.5 bg-[#0B0F19] text-white text-xs font-semibold border border-slate-800 rounded-xl outline-none focus:border-indigo-500"
+                            />
+                        </div>
+
+                        {/* Pilih Barang */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                                Pilih Barang
+                            </label>
+                            <select
+                                value={data.id_barang}
+                                onChange={(e) => {
+                                    const bId = e.target.value;
+                                    setData('id_barang', bId);
+                                    const bObj = barang.find(b => b.id_barang.toString() === bId);
+                                    if (bObj) {
+                                        setData(prev => ({
+                                            ...prev,
+                                            id_barang: bId,
+                                            satuan: bObj.satuan || 'PCS',
+                                            rasio_konversi: 1,
+                                        }));
+                                    }
+                                }}
+                                className="w-full px-3.5 py-2.5 bg-[#0B0F19] text-white text-xs font-semibold border border-slate-800 rounded-xl outline-none focus:border-indigo-500"
+                                required
+                            >
+                                <option value="">Pilih Barang...</option>
+                                {barang.map(b => (
+                                    <option key={b.id_barang} value={b.id_barang}>
+                                        {b.nama_barang} (Stok: {b.stok})
+                                    </option>
+                                ))}
+                            </select>
+                            {errors.id_barang && <p className="text-[11px] text-rose-500 mt-1">{errors.id_barang}</p>}
+                        </div>
+
+                        {/* Jumlah Masuk */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                                Jumlah Masuk
+                            </label>
+                            <div className="relative flex items-center">
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={data.jumlah}
+                                    onChange={(e) => setData('jumlah', Number(e.target.value))}
+                                    placeholder="0"
+                                    className="w-full px-3.5 py-2.5 bg-[#0B0F19] text-white text-xs font-bold border border-slate-800 rounded-xl outline-none focus:border-indigo-500 pr-12"
+                                    required
+                                />
+                                <span className="absolute right-3.5 text-xs font-bold text-slate-400">
+                                    {data.satuan || 'pcs'}
+                                </span>
+                            </div>
+                            {errors.jumlah && <p className="text-[11px] text-rose-500 mt-1">{errors.jumlah}</p>}
+                        </div>
+
+                        {/* Supplier (Opsional) */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                                Supplier <span className="text-slate-500 text-[10px] font-normal">(Opsional)</span>
+                            </label>
+                            <input
+                                type="text"
+                                placeholder="Contoh: PT Tirta Investama"
+                                value={supplier}
+                                onChange={(e) => setSupplier(e.target.value)}
+                                className="w-full px-3.5 py-2.5 bg-[#0B0F19] text-white text-xs font-medium placeholder:text-slate-600 border border-slate-800 rounded-xl outline-none focus:border-indigo-500"
+                            />
+                        </div>
+
+                        {/* Catatan (Opsional) */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                                Catatan <span className="text-slate-500 text-[10px] font-normal">(Opsional)</span>
+                            </label>
+                            <textarea
+                                rows={2}
+                                placeholder="Tambahkan catatan jika ada..."
+                                value={catatan}
+                                onChange={(e) => setCatatan(e.target.value)}
+                                className="w-full px-3.5 py-2.5 bg-[#0B0F19] text-white text-xs font-medium placeholder:text-slate-600 border border-slate-800 rounded-xl outline-none focus:border-indigo-500 resize-none"
+                            />
+                        </div>
+
+                        {/* Submit CTA */}
+                        <button
+                            type="submit"
+                            disabled={processing || !data.id_barang}
+                            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white text-xs font-black rounded-2xl shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50 mt-2"
+                        >
+                            {processing ? 'Menyimpan...' : 'Simpan Stok Masuk'}
+                        </button>
+                    </form>
+
+                    {/* Riwayat Masuk Terkini */}
+                    <div className="pt-2">
+                        <div className="flex items-center justify-between mb-2.5 px-1">
+                            <span className="text-xs font-bold text-slate-400">Riwayat Terkini</span>
+                            <span className="text-[11px] text-indigo-400 font-bold">{stok_masuk.length} entri</span>
+                        </div>
+                        <div className="space-y-2">
+                            {stok_masuk.slice(0, 5).map((item) => (
+                                <div key={item.id_stok_masuk} className="p-3 bg-[#131B2E] border border-slate-800/80 rounded-2xl flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-xs font-bold text-white">{item.barang?.nama_barang || 'Barang #' + item.id_barang}</h4>
+                                        <p className="text-[10px] text-slate-500 mt-0.5">{item.tanggal_masuk}</p>
+                                    </div>
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-950/60 border border-emerald-500/40 text-emerald-400">
+                                        +{item.jumlah} {item.satuan || 'PCS'}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <MobileBottomNav activeTab="stok" />
+            </div>
+
+            {/* ========================================================================= */}
+            {/* TAMPILAN DESKTOP (Tetap dipertahankan)                                     */}
+            {/* ========================================================================= */}
+            <div className="hidden md:flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 overflow-hidden">
+                <Sidebar auth={auth} />
 
             <main className="flex-1 flex flex-col overflow-hidden relative">
                 {/* Header */}
@@ -367,6 +529,7 @@ export default function StokMasukIndex({ auth, stok_masuk, barang, flash }: Prop
                     </div>
                 </div>
             )}
+            </div>
         </div>
     );
 }

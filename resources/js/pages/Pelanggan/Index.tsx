@@ -20,6 +20,9 @@ import {
 import { useState, useMemo } from 'react';
 
 import Sidebar from '@/components/Sidebar';
+import MobileHeader from '@/components/mobile/MobileHeader';
+import MobileBottomNav from '@/components/mobile/MobileBottomNav';
+import { ChevronRight } from 'lucide-react';
 
 interface PembayaranHutangItem {
     id_pembayaran: number;
@@ -231,12 +234,142 @@ export default function PelangganIndex({ auth, pelanggan, stats, flash }: Props)
     const sisaHutangPreview = selectedPelanggan ? Math.max(0, selectedPelanggan.total_hutang - nominalBayarNum) : 0;
     const isLunasPreview = selectedPelanggan && nominalBayarNum >= selectedPelanggan.total_hutang;
 
+    const getAvatarGradient = (name: string) => {
+        const gradients = [
+            'from-blue-600 to-indigo-700',
+            'from-purple-600 to-pink-600',
+            'from-emerald-600 to-teal-700',
+            'from-amber-500 to-orange-600',
+            'from-rose-600 to-red-700',
+            'from-cyan-600 to-blue-600',
+        ];
+        let hash = 0;
+        for (let i = 0; i < (name || '').length; i++) hash += name.charCodeAt(i);
+        return gradients[hash % gradients.length];
+    };
+
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
+        <div className="min-h-screen bg-[#0B0F19] text-slate-100 font-sans">
             <Head title="Pelanggan & Hutang - Kasir Pro" />
 
-            {/* Sidebar Terpadu */}
-            <Sidebar auth={auth} />
+            {/* ========================================================================= */}
+            {/* TAMPILAN MOBILE (Layar 7: Pelanggan & Hutang) Sesuai Poster 100%          */}
+            {/* ========================================================================= */}
+            <div className="md:hidden flex flex-col min-h-screen pb-20">
+                <MobileHeader
+                    variant="subpage"
+                    title="Pelanggan & Hutang"
+                    backUrl="/dashboard"
+                    action={
+                        <button
+                            type="button"
+                            onClick={openCreateModal}
+                            className="w-7 h-7 rounded-full bg-indigo-600 active:scale-95 text-white flex items-center justify-center shadow-md shadow-indigo-600/30"
+                            aria-label="Tambah Pelanggan"
+                        >
+                            <Plus className="w-4 h-4" />
+                        </button>
+                    }
+                />
+
+                <div className="px-4 py-3 space-y-3">
+                    {/* Search bar */}
+                    <div className="relative flex items-center">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input
+                            type="text"
+                            placeholder="Cari nama atau nomor telepon..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#131B2E] text-white text-xs font-medium placeholder:text-slate-500 border border-slate-800 rounded-2xl outline-none focus:border-indigo-500 transition-all"
+                        />
+                    </div>
+
+                    {/* Filter chips: [ Semua ] [ Dengan Hutang ] [ Tanpa Hutang ] */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        {[
+                            { id: 'all', label: 'Semua' },
+                            { id: 'hutang', label: 'Dengan Hutang' },
+                            { id: 'lunas', label: 'Tanpa Hutang' }
+                        ].map((chip) => (
+                            <button
+                                key={chip.id}
+                                type="button"
+                                onClick={() => setFilterHutang(chip.id as 'all' | 'hutang' | 'lunas')}
+                                className={`px-4 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                                    filterHutang === chip.id
+                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                                        : 'bg-[#131B2E] text-slate-400 hover:text-white border border-slate-800'
+                                }`}
+                            >
+                                {chip.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Customer List */}
+                    <div className="space-y-2.5 pt-1">
+                        {filteredPelanggan.length === 0 ? (
+                            <div className="p-8 text-center text-slate-500 text-xs font-medium">
+                                Tidak ada pelanggan yang cocok dengan pencarian.
+                            </div>
+                        ) : (
+                            filteredPelanggan.map((p) => {
+                                const hasDebt = p.total_hutang > 0;
+                                const initial = p.nama_pelanggan ? p.nama_pelanggan.charAt(0).toUpperCase() : '?';
+                                return (
+                                    <div
+                                        key={p.id_pelanggan}
+                                        onClick={() => {
+                                            if (hasDebt) {
+                                                openBayarModal(p);
+                                            } else {
+                                                openEditModal(p);
+                                            }
+                                        }}
+                                        className="flex items-center justify-between p-3 rounded-2xl bg-[#131B2E] border border-slate-800/80 active:scale-[0.99] transition-transform cursor-pointer shadow-sm"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarGradient(p.nama_pelanggan)} flex items-center justify-center text-white font-black text-xs shrink-0 shadow-md`}>
+                                                {initial}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="text-xs font-bold text-white tracking-tight truncate">
+                                                    {p.nama_pelanggan}
+                                                </h4>
+                                                <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate">
+                                                    {p.no_telp || '-'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {hasDebt ? (
+                                                <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-950/60 border border-rose-500/40 text-rose-400">
+                                                    {formatRupiah(p.total_hutang)}
+                                                </span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-800/60 text-slate-400">
+                                                    Rp 0
+                                                </span>
+                                            )}
+                                            <ChevronRight className="w-4 h-4 text-slate-500" />
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+
+                <MobileBottomNav activeTab="pelanggan" />
+            </div>
+
+            {/* ========================================================================= */}
+            {/* TAMPILAN DESKTOP (Tetap dipertahankan untuk layar lebar)                  */}
+            {/* ========================================================================= */}
+            <div className="hidden md:flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 overflow-hidden">
+                <Sidebar auth={auth} />
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col overflow-hidden relative">
@@ -489,6 +622,7 @@ export default function PelangganIndex({ auth, pelanggan, stats, flash }: Props)
                     </div>
                 </div>
             </main>
+            </div>
 
             {/* ========================================================= */}
             {/* MODAL BAYAR HUTANG */}

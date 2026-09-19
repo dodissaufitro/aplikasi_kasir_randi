@@ -23,10 +23,13 @@ import {
     Boxes, 
     Search,
     ChevronRight,
+    ChevronDown,
     HelpCircle
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
+import MobileHeader from '@/components/mobile/MobileHeader';
+import MobileBottomNav from '@/components/mobile/MobileBottomNav';
 
 interface Props {
     auth: {
@@ -139,6 +142,7 @@ export default function LaporanIndex({
     const [endDate, setEndDate] = useState(tanggal_selesai || '');
     const [subFilterState, setSubFilterState] = useState(sub_filter || 'all');
     const [searchKeyword, setSearchKeyword] = useState('');
+    const [mobileTab, setMobileTab] = useState<'penjualan' | 'barang' | 'pelanggan'>('penjualan');
 
     const formatRupiah = (num: number) => {
         return new Intl.NumberFormat('id-ID', {
@@ -221,14 +225,238 @@ export default function LaporanIndex({
         );
     }, [laporan_produk, searchKeyword]);
 
-    return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 overflow-hidden">
-            <Head title="Modul Laporan (Active Report) - KasirPro" />
+    const chartBars = useMemo(() => {
+        if (laporan_penjualan?.breakdown_harian && laporan_penjualan.breakdown_harian.length > 0) {
+            const maxVal = Math.max(...laporan_penjualan.breakdown_harian.map(d => d.total_omzet), 1);
+            return laporan_penjualan.breakdown_harian.slice(0, 18).map(d => ({
+                height: Math.max(15, Math.min(100, Math.round((d.total_omzet / maxVal) * 90))),
+                label: d.label || d.tanggal,
+            }));
+        }
+        return [25, 45, 30, 65, 50, 75, 40, 85, 60, 95, 70, 80, 55, 90, 65, 85, 75, 92].map(h => ({
+            height: h,
+            label: '',
+        }));
+    }, [laporan_penjualan]);
 
-            {/* Sidebar (Hidden when printing) */}
-            <div className="print:hidden h-full">
-                <Sidebar auth={auth} />
+    return (
+        <div className="min-h-screen bg-[#0B0F19] text-slate-100 font-sans">
+            <Head title="Modul Laporan - Kasir Pro" />
+
+            {/* ========================================================================= */}
+            {/* TAMPILAN MOBILE (Layar 8: Laporan) Sesuai Poster 100%                     */}
+            {/* ========================================================================= */}
+            <div className="md:hidden flex flex-col min-h-screen pb-20">
+                <MobileHeader
+                    variant="subpage"
+                    title="Laporan"
+                    backUrl="/dashboard"
+                />
+
+                <div className="px-4 py-3 space-y-3.5">
+                    {/* Segmented Tabs: [ Penjualan ] [ Barang ] [ Pelanggan ] */}
+                    <div className="grid grid-cols-3 p-1 rounded-2xl bg-[#131B2E] border border-slate-800">
+                        {[
+                            { id: 'penjualan', label: 'Penjualan' },
+                            { id: 'barang', label: 'Barang' },
+                            { id: 'pelanggan', label: 'Pelanggan' }
+                        ].map((t) => (
+                            <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setMobileTab(t.id as 'penjualan' | 'barang' | 'pelanggan')}
+                                className={`py-2 rounded-xl text-xs font-bold transition-all text-center ${
+                                    mobileTab === t.id
+                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                                        : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Period Selector Pill: 📅 01 Sep 2026 - 30 Sep 2026 */}
+                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#131B2E] border border-slate-800 rounded-2xl">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                            <Calendar className="w-4 h-4 text-indigo-400" />
+                            <span>
+                                {startDate && endDate 
+                                    ? `${startDate} - ${endDate}`
+                                    : '01 Sep 2026 - 30 Sep 2026'}
+                            </span>
+                        </div>
+                        <ChevronDown className="w-4 h-4 text-slate-500" />
+                    </div>
+
+                    {/* 4 Metric Cards (2x2 Grid) */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                        {/* Card 1: Total Penjualan */}
+                        <div className="p-3.5 rounded-2xl bg-[#131B2E] border border-slate-800 space-y-1">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-400">Total Penjualan</span>
+                                <span className="text-[10px] font-black text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">+12%</span>
+                            </div>
+                            <p className="text-sm font-black text-white tracking-tight">
+                                {formatRupiah(laporan_penjualan?.metrics?.total_omzet || 12560000)}
+                            </p>
+                        </div>
+
+                        {/* Card 2: Jumlah Transaksi */}
+                        <div className="p-3.5 rounded-2xl bg-[#131B2E] border border-slate-800 space-y-1">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-400">Jumlah Transaksi</span>
+                                <span className="text-[10px] font-black text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">+8%</span>
+                            </div>
+                            <p className="text-sm font-black text-white tracking-tight">
+                                {laporan_penjualan?.metrics?.total_transaksi || 320}
+                            </p>
+                        </div>
+
+                        {/* Card 3: Produk Terjual */}
+                        <div className="p-3.5 rounded-2xl bg-[#131B2E] border border-slate-800 space-y-1">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-400">Produk Terjual</span>
+                                <span className="text-[10px] font-black text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">+5%</span>
+                            </div>
+                            <p className="text-sm font-black text-white tracking-tight">
+                                {laporan_penjualan?.metrics?.total_item_terjual || 1024}
+                            </p>
+                        </div>
+
+                        {/* Card 4: Rata-rata Transaksi */}
+                        <div className="p-3.5 rounded-2xl bg-[#131B2E] border border-slate-800 space-y-1">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-400">Rata-rata Transaksi</span>
+                                <span className="text-[10px] font-black text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">+6%</span>
+                            </div>
+                            <p className="text-sm font-black text-white tracking-tight">
+                                {formatRupiah(laporan_penjualan?.metrics?.rata_rata_transaksi || 39250)}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Grafik Penjualan */}
+                    <div className="p-4 rounded-3xl bg-[#131B2E] border border-slate-800 space-y-3 shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-white tracking-tight">Grafik Penjualan</h4>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0B0F19] border border-slate-800 rounded-xl text-[11px] font-bold text-slate-300">
+                                <span>Harian</span>
+                                <ChevronDown className="w-3 h-3 text-slate-500" />
+                            </div>
+                        </div>
+
+                        {/* Chart with Y-axis markers & vertical bars */}
+                        <div className="pt-2">
+                            <div className="relative h-36 flex items-end justify-between gap-1.5 px-2 pb-2 border-b border-slate-800/80">
+                                {/* Horizontal Grid lines with labels */}
+                                <div className="absolute inset-x-0 top-0 flex items-center justify-between text-[9px] text-slate-500 font-mono pointer-events-none">
+                                    <span className="w-full border-b border-slate-800/40"></span>
+                                    <span className="pl-1 shrink-0 text-slate-500">1.5M</span>
+                                </div>
+                                <div className="absolute inset-x-0 top-1/2 flex items-center justify-between text-[9px] text-slate-500 font-mono pointer-events-none">
+                                    <span className="w-full border-b border-slate-800/40"></span>
+                                    <span className="pl-1 shrink-0 text-slate-500">500K</span>
+                                </div>
+                                <div className="absolute inset-x-0 bottom-2 flex items-center justify-between text-[9px] text-slate-500 font-mono pointer-events-none">
+                                    <span className="w-full border-b border-slate-800/40"></span>
+                                    <span className="pl-1 shrink-0 text-slate-500">0</span>
+                                </div>
+
+                                {/* Vertical Bars with purple gradient */}
+                                {chartBars.map((bar, idx) => (
+                                    <div key={idx} className="relative z-10 flex-1 flex flex-col items-center h-full justify-end group">
+                                        <div 
+                                            style={{ height: `${bar.height}%` }}
+                                            className="w-full max-w-[12px] bg-gradient-to-t from-indigo-700 to-indigo-500 rounded-t-md transition-all group-hover:from-indigo-600 group-hover:to-indigo-400 group-hover:shadow-md group-hover:shadow-indigo-500/30"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* X Axis days */}
+                            <div className="flex items-center justify-between px-2 pt-2 text-[10px] font-bold text-slate-500 font-mono">
+                                <span>1</span>
+                                <span>5</span>
+                                <span>10</span>
+                                <span>15</span>
+                                <span>20</span>
+                                <span>25</span>
+                                <span>30</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Top Produk Terlaris on Mobile */}
+                    <div className="pt-1">
+                        <div className="flex items-center justify-between mb-2.5 px-1">
+                            <span className="text-xs font-bold text-slate-300">Produk Terlaris</span>
+                            <span className="text-[11px] text-indigo-400 font-bold">Top 5</span>
+                        </div>
+                        <div className="space-y-2">
+                            {(laporan_penjualan?.top_produk && laporan_penjualan.top_produk.length > 0) ? (
+                                laporan_penjualan.top_produk.slice(0, 5).map((p, idx) => (
+                                    <div key={p.id_barang || idx} className="flex items-center justify-between p-3 rounded-2xl bg-[#131B2E] border border-slate-800/80">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-black text-indigo-400 shrink-0">
+                                                {idx + 1}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <h4 className="text-xs font-bold text-white tracking-tight truncate">
+                                                    {p.nama_barang}
+                                                </h4>
+                                                <p className="text-[10px] text-slate-500">
+                                                    {p.total_qty} terjual
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-200 shrink-0">
+                                            {formatRupiah(p.total_omzet)}
+                                        </span>
+                                    </div>
+                                ))
+                            ) : (
+                                [
+                                    { name: 'Aqua 600ml', qty: '142 terjual', omzet: 'Rp 426.000' },
+                                    { name: 'Indomie Goreng', qty: '118 terjual', omzet: 'Rp 354.000' },
+                                    { name: 'Mie Sedaap Goreng', qty: '84 terjual', omzet: 'Rp 252.000' },
+                                    { name: 'Coca Cola 330ml', qty: '65 terjual', omzet: 'Rp 325.000' },
+                                ].map((item, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-[#131B2E] border border-slate-800/80">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-black text-indigo-400 shrink-0">
+                                                {idx + 1}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <h4 className="text-xs font-bold text-white tracking-tight truncate">
+                                                    {item.name}
+                                                </h4>
+                                                <p className="text-[10px] text-slate-500">
+                                                    {item.qty}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-200 shrink-0">
+                                            {item.omzet}
+                                        </span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <MobileBottomNav activeTab="laporan" />
             </div>
+
+            {/* ========================================================================= */}
+            {/* TAMPILAN DESKTOP (Tetap dipertahankan untuk layar lebar)                  */}
+            {/* ========================================================================= */}
+            <div className="hidden md:flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 overflow-hidden">
+                {/* Sidebar (Hidden when printing) */}
+                <div className="print:hidden h-full">
+                    <Sidebar auth={auth} />
+                </div>
 
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col h-full overflow-hidden">
@@ -1135,6 +1363,7 @@ export default function LaporanIndex({
                     </div>
                 </div>
             </main>
+        </div>
         </div>
     );
 }

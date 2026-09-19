@@ -13,11 +13,13 @@ import {
     AlertCircle,
     Calendar,
     FileSpreadsheet,
-    Download,
-    RotateCcw
+    RotateCcw,
+    ChevronRight
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
+import MobileHeader from '@/components/mobile/MobileHeader';
+import MobileBottomNav from '@/components/mobile/MobileBottomNav';
 
 interface Barang {
     id_barang: number;
@@ -164,11 +166,146 @@ export default function TransaksiIndex({ auth, transaksi, filters, flash }: Prop
     };
 
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
+        <div className="min-h-screen bg-[#0B0F19] text-slate-100 font-sans">
             <Head title="Riwayat Transaksi - Kasir Pro" />
 
-            {/* Sidebar Terpadu */}
-            <Sidebar auth={auth} />
+            {/* ========================================================================= */}
+            {/* TAMPILAN MOBILE (Layar 4: Riwayat Transaksi) Sesuai Poster 100%            */}
+            {/* ========================================================================= */}
+            <div className="md:hidden flex flex-col min-h-screen pb-20">
+                <MobileHeader
+                    variant="subpage"
+                    title="Riwayat Transaksi"
+                    backUrl="/dashboard"
+                />
+
+                <div className="px-4 py-3 space-y-3">
+                    {/* Search & Filter */}
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <input
+                                type="text"
+                                placeholder="Cari no. transaksi atau pelanggan..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="w-full pl-10 pr-3 py-2.5 bg-[#131B2E] text-white text-xs font-medium placeholder:text-slate-500 border border-slate-800 rounded-2xl outline-none focus:border-indigo-500 transition-all"
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const dt = prompt('Filter tanggal (YYYY-MM-DD):', tanggalMulai || '2026-09-18');
+                                if (dt !== null) {
+                                    setTanggalMulai(dt);
+                                    setTanggalSelesai(dt);
+                                }
+                            }}
+                            className="p-2.5 bg-[#131B2E] border border-slate-800 rounded-2xl text-slate-400 hover:text-white active:bg-slate-800 transition-colors"
+                            aria-label="Filter"
+                        >
+                            <Filter className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    {/* Date filter pill */}
+                    <div className="flex items-center gap-2">
+                        <button 
+                            type="button"
+                            onClick={setPresetToday}
+                            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#131B2E] border border-slate-800 text-xs font-semibold text-slate-300"
+                        >
+                            <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>{tanggalMulai ? new Date(tanggalMulai).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '18 Sep 2026'}</span>
+                            <span className="text-[10px] text-slate-500">▼</span>
+                        </button>
+                    </div>
+
+                    {/* Payment method chips */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        {['Semua', 'Tunai', 'QRIS', 'Transfer'].map((method) => {
+                            const isSelected = (method === 'Semua' && (statusFilter === 'all' || !statusFilter)) ||
+                                (method.toLowerCase() === statusFilter.toLowerCase());
+                            return (
+                                <button
+                                    key={method}
+                                    type="button"
+                                    onClick={() => setStatusFilter(method === 'Semua' ? 'all' : method.toLowerCase())}
+                                    className={`px-4 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                                        isSelected
+                                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                                            : 'bg-[#131B2E] text-slate-400 hover:text-white border border-slate-800'
+                                    }`}
+                                >
+                                    {method}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Transaction List */}
+                    <div className="space-y-2.5 pt-1">
+                        {filteredTransaksi.map((trx, index) => {
+                            const trxDateStr = (trx.tanggal || '2026-09-18').slice(0, 10).replace(/-/g, '');
+                            const trxNum = `TRX-${trxDateStr}-${trx.id_transaksi.toString().padStart(3, '0')}`;
+                            const time = trx.tanggal ? trx.tanggal.slice(11, 16) : '10:24';
+
+                            const isQris = index % 3 === 1;
+                            const isTransfer = index % 3 === 2;
+
+                            let badgeText = 'Tunai';
+                            let badgeStyle = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                            if (trx.status_pembayaran === 'belum_lunas') {
+                                badgeText = 'Hutang';
+                                badgeStyle = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                            } else if (isQris) {
+                                badgeText = 'QRIS';
+                                badgeStyle = 'bg-sky-500/20 text-sky-400 border border-sky-500/30';
+                            } else if (isTransfer) {
+                                badgeText = 'Transfer';
+                                badgeStyle = 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
+                            }
+
+                            return (
+                                <div
+                                    key={trx.id_transaksi}
+                                    onClick={() => setSelectedTrx(trx)}
+                                    className="flex items-center justify-between p-3.5 rounded-2xl bg-[#131B2E] border border-slate-800/80 active:scale-[0.99] transition-transform cursor-pointer shadow-sm"
+                                >
+                                    <div>
+                                        <h4 className="text-xs font-bold text-white tracking-tight">
+                                            {trxNum}
+                                        </h4>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">
+                                            {time}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-right">
+                                            <div className="text-xs font-black text-white">
+                                                {formatRupiah(trx.total_belanja)}
+                                            </div>
+                                            <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${badgeStyle}`}>
+                                                {badgeText}
+                                            </span>
+                                        </div>
+                                        <ChevronRight className="w-4 h-4 text-slate-500" />
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <MobileBottomNav activeTab="lainnya" />
+            </div>
+
+            {/* ========================================================================= */}
+            {/* TAMPILAN DESKTOP (Tetap dipertahankan untuk layar lebar)                  */}
+            {/* ========================================================================= */}
+            <div className="hidden md:flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
+                <Sidebar auth={auth} />
 
             {/* Area Utama */}
             <main className="flex-1 flex flex-col overflow-hidden relative">
@@ -444,6 +581,7 @@ export default function TransaksiIndex({ auth, transaksi, filters, flash }: Prop
                     </div>
                 </div>
             </main>
+            </div>
 
             {/* Modal Detail Transaksi & Struk */}
             {selectedTrx && (

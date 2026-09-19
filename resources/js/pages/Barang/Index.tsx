@@ -25,10 +25,14 @@ import {
     Building2,
     ShoppingBag,
     ToggleLeft,
-    ToggleRight
+    ToggleRight,
+    ChevronRight
 } from 'lucide-react';
 import { useState, useMemo, useRef } from 'react';
 import Sidebar from '@/components/Sidebar';
+import MobileHeader from '@/components/mobile/MobileHeader';
+import MobileBottomNav from '@/components/mobile/MobileBottomNav';
+import ProductThumbnail from '@/components/mobile/ProductThumbnail';
 
 interface SatuanKonversi {
     id?: number;
@@ -181,6 +185,26 @@ export default function BarangIndex({ auth, barang, kategori_list = [], merk_lis
             return matchesSearch && matchesKategori && matchesMerk && matchesStok && matchesAktif;
         });
     }, [barang, searchQuery, selectedKategori, selectedMerk, selectedStokStatus, selectedAktifStatus]);
+
+    // Filter khusus Mobile
+    const [mobileChip, setMobileChip] = useState<'semua' | 'stok_rendah' | 'makanan' | 'minuman'>('semua');
+
+    const filteredBarangMobile = useMemo(() => {
+        return barang.filter(b => {
+            const matchesSearch = !searchQuery.trim() || 
+                (b.nama_barang || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (b.kode_barang || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (b.barcode || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+            if (!matchesSearch) return false;
+
+            if (mobileChip === 'semua') return true;
+            if (mobileChip === 'stok_rendah') return b.stok <= (b.stok_minimum || 10);
+            if (mobileChip === 'makanan') return (b.kategori || '').toLowerCase().includes('makan') || (b.kategori || '').toLowerCase().includes('snack') || (b.kategori || '').toLowerCase().includes('biskuit');
+            if (mobileChip === 'minuman') return (b.kategori || '').toLowerCase().includes('minum');
+            return true;
+        });
+    }, [barang, searchQuery, mobileChip]);
 
     // Summary Metrics
     const totalAsetStok = useMemo(() => {
@@ -372,12 +396,113 @@ export default function BarangIndex({ auth, barang, kategori_list = [], merk_lis
     };
 
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 overflow-hidden">
-            <Head title="Master Data Barang & Satuan - KasirPro" />
+        <div className="min-h-screen bg-[#0B0F19] text-slate-100 font-sans">
+            <Head title="Data Barang - Kasir Pro" />
 
-            <div className="h-full shrink-0">
-                <Sidebar auth={auth} />
+            {/* ========================================================================= */}
+            {/* TAMPILAN MOBILE (Layar 5: Data Barang) Sesuai Poster 100%                 */}
+            {/* ========================================================================= */}
+            <div className="md:hidden flex flex-col min-h-screen pb-20">
+                <MobileHeader
+                    variant="subpage"
+                    title="Data Barang"
+                    backUrl="/dashboard"
+                    action={
+                        <button
+                            type="button"
+                            onClick={openCreateModal}
+                            className="w-7 h-7 rounded-full bg-indigo-600 active:scale-95 text-white flex items-center justify-center shadow-md shadow-indigo-600/30"
+                            aria-label="Tambah Produk"
+                        >
+                            <Plus className="w-4 h-4" />
+                        </button>
+                    }
+                />
+
+                <div className="px-4 py-3 space-y-3">
+                    {/* Search bar */}
+                    <div className="relative flex items-center">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input
+                            type="text"
+                            placeholder="Cari nama atau kode barang..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#131B2E] text-white text-xs font-medium placeholder:text-slate-500 border border-slate-800 rounded-2xl outline-none focus:border-indigo-500 transition-all"
+                        />
+                    </div>
+
+                    {/* Filter chips: [ Semua ] [ Stok Rendah ] [ Makanan ] [ Minuman ] */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        {[
+                            { id: 'semua', label: 'Semua' },
+                            { id: 'stok_rendah', label: 'Stok Rendah' },
+                            { id: 'makanan', label: 'Makanan' },
+                            { id: 'minuman', label: 'Minuman' }
+                        ].map((chip) => (
+                            <button
+                                key={chip.id}
+                                type="button"
+                                onClick={() => setMobileChip(chip.id as any)}
+                                className={`px-4 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                                    mobileChip === chip.id
+                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                                        : 'bg-[#131B2E] text-slate-400 hover:text-white border border-slate-800'
+                                }`}
+                            >
+                                {chip.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Product List */}
+                    <div className="space-y-2.5 pt-1">
+                        {filteredBarangMobile.map((item) => (
+                            <div
+                                key={item.id_barang}
+                                onClick={() => openEditModal(item)}
+                                className="flex items-center justify-between p-3 rounded-2xl bg-[#131B2E] border border-slate-800/80 active:scale-[0.99] transition-transform cursor-pointer shadow-sm"
+                            >
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <ProductThumbnail nama={item.nama_barang} foto_url={item.foto_url} className="w-11 h-11" />
+                                    <div className="min-w-0">
+                                        <h4 className="text-xs font-bold text-white tracking-tight truncate">
+                                            {item.nama_barang}
+                                        </h4>
+                                        <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                            {item.barcode || item.kode_barang || '8992750200012'}
+                                        </p>
+                                        <p className="text-xs font-bold text-slate-200 mt-0.5">
+                                            {formatRupiah(item.harga_jual)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2.5 shrink-0">
+                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                        item.stok <= 0
+                                            ? 'bg-rose-950/60 border border-rose-500/40 text-rose-400'
+                                            : 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-400'
+                                    }`}>
+                                        Stok: {item.stok}
+                                    </span>
+                                    <ChevronRight className="w-4 h-4 text-slate-500" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <MobileBottomNav activeTab="barang" />
             </div>
+
+            {/* ========================================================================= */}
+            {/* TAMPILAN DESKTOP (Tetap dipertahankan untuk layar lebar)                  */}
+            {/* ========================================================================= */}
+            <div className="hidden md:flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 overflow-hidden">
+                <div className="h-full shrink-0">
+                    <Sidebar auth={auth} />
+                </div>
 
             <main className="flex-1 flex flex-col h-full overflow-hidden">
                 {/* Header Toolbar */}
@@ -688,6 +813,8 @@ export default function BarangIndex({ auth, barang, kategori_list = [], merk_lis
                         </div>
                     </div>
                 </div>
+            </main>
+        </div>
 
                 {/* ========================================================================= */}
                 {/* MODAL TAMBAH & EDIT MASTER BARANG LENGKAP */}
@@ -1315,7 +1442,6 @@ export default function BarangIndex({ auth, barang, kategori_list = [], merk_lis
                         </div>
                     </div>
                 )}
-            </main>
         </div>
     );
 }
